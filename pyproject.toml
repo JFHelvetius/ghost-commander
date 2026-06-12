@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ghost-commander"
+version = "0.1.0"
+description = "Coordinate hundreds of autonomous agents in changing environments, maximizing mission success through dynamic resource reassignment."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "J.M. Mateos" }]
+keywords = ["multi-agent", "coordination", "task-allocation", "simulation", "autonomy"]
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+app = [
+    "streamlit>=1.35",
+    "pandas>=2.0",
+    "plotly>=5.18",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+ghost-commander = "ghost_commander.cli:main"
+ghost-commander-app = "ghost_commander.app:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ghost_commander"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

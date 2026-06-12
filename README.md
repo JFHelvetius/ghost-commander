@@ -1,0 +1,144 @@
+# 👻 Ghost Commander
+
+**Un sistema capaz de coordinar cientos de agentes autónomos en entornos
+cambiantes, maximizando el éxito de la misión mediante reasignación dinámica de
+recursos.**
+
+Ghost Commander no es un observador ni un paper: es un **comandante digital**.
+Asigna tareas, detecta fallos y reorganiza la flota en tiempo real para que la
+misión se complete a pesar de las pérdidas.
+
+> El resultado que persigue no es *"qué arquitectura tan interesante"*, sino:
+> **"Acabo de ver 100 agentes perder un tercio de sus recursos a una onda de
+> choque y reorganizarse solos para completar la misión."**
+
+---
+
+## Demo en 30 segundos
+
+```bash
+# headless: una misión + comparación de las 3 estrategias
+python examples/run_demo.py
+
+# dashboard interactivo (mapa 2D, métricas, timeline, replay, comparación)
+ghost-commander-app
+```
+
+Salida típica del demo (escenario por defecto, 100 agentes, onda de choque en el
+tick 18 que tumba ~35% de la flota):
+
+```
+=== single run (global strategy) ===
+  mission completion : 100.0%
+  tasks done         : 55/55
+  agents lost        : 40
+  reassignments      : 18
+  determinism digest : bbd2c0926212c315
+
+=== strategy comparison (same scenario + seed) ===
+  1. global   mission=100.0%  done=55/55  ticks=60   lost=40  reassign=18
+  2. auction  mission=100.0%  done=55/55  ticks=64   lost=40  reassign=18
+  3. greedy   mission=100.0%  done=55/55  ticks=111  lost=40  reassign=24
+```
+
+La flota pierde 40 de 100 agentes a mitad de misión y aun así la termina. El
+comandante reasigna 18 veces las tareas que quedaron huérfanas. Las tres
+estrategias completan, pero `greedy` tarda casi el doble y necesita más
+reasignaciones: la comparación hace visible *por qué* la coordinación importa.
+
+---
+
+## Instalación
+
+```bash
+python -m venv .venv
+.venv/Scripts/activate          # Windows
+pip install -e ".[app,dev]"     # app = dashboard, dev = tests
+```
+
+Requiere Python ≥ 3.11. El núcleo solo depende de `numpy`; el dashboard añade
+`streamlit`, `plotly` y `pandas`.
+
+---
+
+## Uso (CLI)
+
+```bash
+ghost-commander presets                              # escenarios y estrategias
+ghost-commander run --strategy global --seed 7       # una misión
+ghost-commander run --preset swarm --save run.json   # 200 agentes, guarda replay
+ghost-commander compare --preset scarce              # ranking de estrategias
+```
+
+Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
+escasos), `calm` (sin fallos). Estrategias: `greedy`, `auction`, `global`.
+
+---
+
+## Qué hay dentro
+
+```
+src/ghost_commander/
+  core/          # infraestructura reutilizada de Project Ghost (ver abajo)
+    rng.py       #   RandomSource jerárquico determinista (fallos reproducibles)
+    events.py    #   EventBus tipado + catálogo de eventos (timeline)
+    clock.py     #   reloj de paso fijo determinista
+  domain/        # modelo: Agent, Task, World
+  coordination/  # estrategias intercambiables: greedy, auction, global
+  sim/           # motor, modelo de fallos, métricas, grabador, comparador
+  app/           # dashboard Streamlit
+  cli.py         # entrada de línea de comandos
+```
+
+### El motor por tick
+
+1. **Reasigna** los agentes libres a las tareas que necesitan dotación, usando
+   la estrategia activa.
+2. **Mueve** cada agente hacia su tarea y la **trabaja** cuando llega.
+3. **Aplica fallos**: desgaste de recursos, pérdidas aleatorias y ondas de
+   choque coordinadas.
+4. **Desvincula** a los agentes perdidos → sus tareas vuelven al pool y se
+   re-dotan en el siguiente tick (el "reorganizarse solo" que se ve en pantalla).
+5. **Registra** métricas y un frame para el replay.
+
+### Determinismo y replay
+
+Mismo escenario + misma seed + misma estrategia ⇒ **misión idéntica, bit a
+bit** (verificado por `RunRecording.digest()`). Por eso la barra de replay del
+dashboard es exacta y la comparación de estrategias es justa: lo único que
+cambia es el algoritmo.
+
+---
+
+## Reutilización de Project Ghost
+
+Ghost Commander es un proyecto **nuevo e independiente**. No modifica ni depende
+del Project Ghost original, pero **reutiliza tres de sus piezas mejor diseñadas**
+adaptándolas (Apache-2.0):
+
+| Pieza de Ghost | Para qué se reutiliza aquí |
+|---|---|
+| `core.clock.RandomSource` (derivación jerárquica SHA-256) | Fallos **reproducibles**: el stream de fallos es un hijo del seed raíz, independiente del layout |
+| `events.EventBus` + eventos tipados | **Timeline de eventos** del dashboard (sequence monotónico, dispatch síncrono, aislamiento de subscribers) |
+| Patrón `SimClockImpl` (tiempo entero, sin float, avanzado solo por código) | Reloj de paso fijo determinista del motor |
+
+El resto —dominio de agentes/tareas, estrategias de coordinación, modelo de
+fallos, motor, métricas y dashboard— es nuevo.
+
+---
+
+## Tests
+
+```bash
+pytest -q     # 19 tests: determinismo, validez de asignaciones, integración del motor
+```
+
+## Estado
+
+MVP v0.1.0 — ejecutable y demostrable hoy. Roadmap inmediato: deadlines de
+tareas (misiones que se pueden *fallar*), capacidades heterogéneas de agentes,
+y animación continua en el dashboard.
+
+## Licencia
+
+Apache-2.0.
