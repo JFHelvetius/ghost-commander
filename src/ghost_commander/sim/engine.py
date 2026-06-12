@@ -96,17 +96,10 @@ class Simulation:
         self._reassign(tick)
         self._advance_agents(tick)
         self._apply_failures(tick)
+        self._expire_overdue(tick)
         self._snapshot()
-        if self._all_done():
-            self.bus.emit(
-                EventType.MISSION_COMPLETE,
-                source="engine",
-                sim_tick=tick,
-                tasks=self.world.tasks_total,
-                agents_lost=self.scenario.n_agents - self.world.agents_alive,
-                reassignments=self.reassignments,
-            )
-            self._finished = True
+        if self._settled():
+            self._finish(tick)
 
     # -------------------------------------------------------------- phases
     def _reassign(self, tick: int) -> None:
@@ -183,6 +176,31 @@ class Simulation:
             freed_agents=freed,
         )
 
+    def _expire_overdue(self, tick: int) -> None:
+        """Fail any open task whose deadline has passed — a mission loss."""
+        for task in self.world.tasks.values():
+            if not task.open or not task.is_overdue(tick):
+                continue
+            task.status = TaskStatus.FAILED
+            task.failed_tick = tick
+            freed = sorted(task.assigned)
+            for aid in freed:
+                ag = self.world.agents[aid]
+                ag.task_id = None
+                if ag.alive:
+                    ag.status = AgentStatus.IDLE
+            task.assigned.clear()
+            self._disrupted.discard(task.id)
+            self.bus.emit(
+                EventType.TASK_FAILED,
+                source="commander",
+                sim_tick=tick,
+                severity=EventSeverity.ERROR if task.priority >= 4 else EventSeverity.WARN,
+                task=task.id,
+                priority=int(task.priority),
+                progress=round(task.progress, 3),
+            )
+
     def _apply_failures(self, tick: int) -> None:
         # resource-low warnings (before drain pushes them over the edge)
         for agent in self.world.alive_agents():
@@ -222,8 +240,36 @@ class Simulation:
         if self._record:
             self.recording.add_frame(self.clock.tick, self.world, metrics)
 
+    def _settled(self) -> bool:
+        """No task is open anymore — every task is either DONE or FAILED."""
+        return not any(t.open for t in self.world.tasks.values())
+
     def _all_done(self) -> bool:
         return all(t.status is TaskStatus.DONE for t in self.world.tasks.values())
+
+    def _finish(self, tick: int) -> None:
+        self._finished = True
+        failed = sum(1 for t in self.world.tasks.values() if t.status is TaskStatus.FAILED)
+        if failed == 0:
+            self.bus.emit(
+                EventType.MISSION_COMPLETE,
+                source="engine",
+                sim_tick=tick,
+                tasks=self.world.tasks_total,
+                agents_lost=self.scenario.n_agents - self.world.agents_alive,
+                reassignments=self.reassignments,
+            )
+        else:
+            self.bus.emit(
+                EventType.MISSION_DEGRADED,
+                source="engine",
+                sim_tick=tick,
+                severity=EventSeverity.WARN,
+                completion=round(self._completion(), 4),
+                tasks_failed=failed,
+                agents_lost=self.scenario.n_agents - self.world.agents_alive,
+                reason="tasks_expired",
+            )
 
     def _completion(self) -> float:
         total = sum(int(t.priority) for t in self.world.tasks.values()) or 1

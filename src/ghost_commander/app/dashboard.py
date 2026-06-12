@@ -38,25 +38,34 @@ def _map_figure(frame: dict, width: float, height: float) -> go.Figure:
     tasks = frame["world"]["tasks"]
     fig = go.Figure()
 
-    # tasks: square markers, size by priority, dimmed when done
-    for status, symbol in (("open", "square"), ("done", "square-open")):
-        xs, ys, txt, sizes, colors = [], [], [], [], []
-        for t in tasks:
-            is_done = t["status"] == "done"
-            if (status == "done") != is_done:
-                continue
-            xs.append(t["x"])
-            ys.append(t["y"])
-            sizes.append(_PRIORITY_SIZE.get(t["priority"], 12))
-            colors.append("#34406b" if is_done else "#f4b942")
-            txt.append(f"task {t['id']} · prio {t['priority']} · {t['status']} · {int(t['progress']*100)}%")
-        if xs:
-            fig.add_trace(go.Scatter(
-                x=xs, y=ys, mode="markers", name=f"tasks ({status})",
-                marker=dict(symbol=symbol, size=sizes, color=colors,
-                            line=dict(width=1, color="#f4b942")),
-                text=txt, hoverinfo="text",
-            ))
+    # tasks: size by priority. open = amber square, done = dim outline,
+    # failed = red X (a deadline lost — the thing coordination is fighting).
+    def _bucket(t: dict) -> str:
+        if t["status"] == "done":
+            return "done"
+        if t["status"] == "failed":
+            return "failed"
+        return "open"
+
+    task_styles = {
+        "open": dict(symbol="square", color="#f4b942", line="#f4b942"),
+        "done": dict(symbol="square-open", color="#34406b", line="#34406b"),
+        "failed": dict(symbol="x", color="#e0484f", line="#e0484f"),
+    }
+    for bucket, style in task_styles.items():
+        sel = [t for t in tasks if _bucket(t) == bucket]
+        if not sel:
+            continue
+        fig.add_trace(go.Scatter(
+            x=[t["x"] for t in sel], y=[t["y"] for t in sel], mode="markers",
+            name=f"tasks · {bucket}",
+            marker=dict(symbol=style["symbol"],
+                        size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
+                        color=style["color"], line=dict(width=1, color=style["line"])),
+            text=[f"task {t['id']} · prio {t['priority']} · {t['status']} · "
+                  f"{int(t['progress']*100)}%" for t in sel],
+            hoverinfo="text",
+        ))
 
     # agents: circles colored by status
     for status, color in _STATUS_COLOR.items():
@@ -130,13 +139,16 @@ def _render_mission(rec: RunRecording) -> None:
     frame = rec.frames[tick]
     m = frame["metrics"]
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    failed = int(m.get("tasks_failed", 0))
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Misión (ponderada)", f"{m['mission_completion'] * 100:.0f}%")
-    c2.metric("Tareas", f"{m['tasks_done']}/{m['tasks_total']}")
-    c3.metric("Agentes vivos", f"{m['agents_alive']}/{m['agents_total']}",
+    c2.metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}")
+    c3.metric("Tareas falladas", failed, delta=None if failed == 0 else f"-{failed}",
+              delta_color="inverse")
+    c4.metric("Agentes vivos", f"{m['agents_alive']}/{m['agents_total']}",
               delta=f"-{m['agents_total'] - m['agents_alive']}")
-    c4.metric("Reasignaciones", int(m["reassignments"]))
-    c5.metric("Recursos medios", f"{m['mean_resources'] * 100:.0f}%")
+    c5.metric("Reasignaciones", int(m["reassignments"]))
+    c6.metric("Recursos medios", f"{m['mean_resources'] * 100:.0f}%")
 
     left, right = st.columns([3, 2])
     with left:
@@ -169,6 +181,7 @@ def _render_compare(scenario: Scenario) -> None:
                 "estrategia": r.strategy,
                 "misión %": round(r.completion * 100, 1),
                 "tareas": f"{r.tasks_done}/{r.tasks_total}",
+                "falladas": r.tasks_failed,
                 "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
                 "agentes perdidos": r.agents_lost,
                 "reasignaciones": r.reassignments,

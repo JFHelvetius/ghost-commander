@@ -25,6 +25,7 @@ class StrategyResult:
     strategy: str
     completion: float
     tasks_done: int
+    tasks_failed: int
     tasks_total: int
     ticks_to_finish: int | None
     agents_lost: int
@@ -36,13 +37,15 @@ class StrategyResult:
         m = rec.final_metrics
         ticks_to_finish = None
         for snap in rec.metrics_history:
-            if snap["tasks_done"] == snap["tasks_total"]:
+            # mission settles when no task is open anymore (done or failed)
+            if snap["tasks_done"] + snap.get("tasks_failed", 0) == snap["tasks_total"]:
                 ticks_to_finish = int(snap["tick"])
                 break
         return cls(
             strategy=rec.strategy,
             completion=float(m.get("mission_completion", 0.0)),
             tasks_done=int(m.get("tasks_done", 0)),
+            tasks_failed=int(m.get("tasks_failed", 0)),
             tasks_total=int(m.get("tasks_total", 0)),
             ticks_to_finish=ticks_to_finish,
             agents_lost=int(m.get("agents_total", 0)) - int(m.get("agents_alive", 0)),

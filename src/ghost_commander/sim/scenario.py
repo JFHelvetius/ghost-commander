@@ -32,6 +32,12 @@ class Scenario:
     task_min_workload: float = 12.0
     task_max_workload: float = 30.0
 
+    # deadlines: a task must be DONE by created_tick + ceil(workload * slack_factor)
+    # + slack_base. Off by default (deadline_slack_factor <= 0) so the hero demo
+    # still completes; turn on for "contested" missions where success can be lost.
+    deadline_slack_factor: float = 0.0
+    deadline_slack_base: int = 0
+
     # failure model (per agent, per tick)
     resource_drain_working: float = 0.012  # baseline drain while working
     resource_drain_moving: float = 0.004
@@ -62,17 +68,31 @@ class Scenario:
             )
 
         for j in range(self.n_tasks):
+            # Preserve draw order x, y, priority, workload so the scenario
+            # realization stays stable as fields are added.
+            x = rng.uniform(0, self.width)
+            y = rng.uniform(0, self.height)
+            priority = self._draw_priority(rng)
+            workload = rng.uniform(self.task_min_workload, self.task_max_workload)
             world.add_task(
                 Task(
                     id=j,
-                    x=rng.uniform(0, self.width),
-                    y=rng.uniform(0, self.height),
-                    priority=self._draw_priority(rng),
-                    workload=rng.uniform(self.task_min_workload, self.task_max_workload),
+                    x=x,
+                    y=y,
+                    priority=priority,
+                    workload=workload,
                     required_agents=1,
+                    deadline_tick=self._deadline_for(workload),
                 )
             )
         return world
+
+    def _deadline_for(self, workload: float) -> int | None:
+        if self.deadline_slack_factor <= 0:
+            return None
+        import math
+
+        return self.deadline_slack_base + math.ceil(workload * self.deadline_slack_factor)
 
     def _draw_priority(self, rng: RandomSource) -> TaskPriority:
         r = rng.uniform(0, sum(self.priority_weights))
@@ -93,6 +113,23 @@ PRESETS: dict[str, Scenario] = {
     ),
     "calm": Scenario(
         name="calm", random_failure_rate=0.0, shock_tick=None, resource_drain_working=0.008
+    ),
+    # Contested: deadlines ON + a leaner fleet under sustained attrition, so the
+    # mission can genuinely be *lost*. This is where coordination quality shows
+    # up as success, not just speed — good strategies save more high-priority
+    # tasks before they expire.
+    "contested": Scenario(
+        name="contested",
+        seed=11,
+        n_agents=55,
+        n_tasks=60,
+        max_ticks=260,
+        agent_speed=2.6,
+        random_failure_rate=0.006,
+        shock_tick=20,
+        shock_failure_rate=0.35,
+        deadline_slack_factor=4.0,
+        deadline_slack_base=16,
     ),
 }
 

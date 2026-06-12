@@ -18,12 +18,14 @@ class MetricsSnapshot:
     agents_total: int
     tasks_done: int
     tasks_total: int
+    tasks_failed: int
     tasks_in_progress: int
     tasks_pending: int
     # weighted by priority — the number the commander actually cares about
     priority_completed: int
+    priority_failed: int
     priority_total: int
-    mission_completion: float  # priority-weighted fraction in [0, 1]
+    mission_completion: float  # priority-weighted fraction DONE, in [0, 1]
     reassignments: int
     mean_resources: float
 
@@ -36,11 +38,13 @@ def compute_metrics(world: World, tick: int, reassignments: int) -> MetricsSnaps
     agents = list(world.agents.values())
 
     done = [t for t in tasks if t.status is TaskStatus.DONE]
+    failed = [t for t in tasks if t.status is TaskStatus.FAILED]
     in_prog = sum(1 for t in tasks if t.status is TaskStatus.IN_PROGRESS)
     pending = sum(1 for t in tasks if t.status is TaskStatus.PENDING)
 
     priority_total = sum(int(t.priority) for t in tasks) or 1
     priority_completed = sum(int(t.priority) for t in done)
+    priority_failed = sum(int(t.priority) for t in failed)
 
     alive = [a for a in agents if a.alive]
     mean_res = sum(a.resources for a in alive) / len(alive) if alive else 0.0
@@ -51,9 +55,11 @@ def compute_metrics(world: World, tick: int, reassignments: int) -> MetricsSnaps
         agents_total=len(agents),
         tasks_done=len(done),
         tasks_total=len(tasks),
+        tasks_failed=len(failed),
         tasks_in_progress=in_prog,
         tasks_pending=pending,
         priority_completed=priority_completed,
+        priority_failed=priority_failed,
         priority_total=priority_total,
         mission_completion=priority_completed / priority_total,
         reassignments=reassignments,

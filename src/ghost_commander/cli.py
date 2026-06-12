@@ -39,6 +39,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"scenario={scenario.name} strategy={args.strategy} seed={scenario.seed}")
     print(f"  ticks recorded : {len(rec.frames) - 1}")
     print(f"  tasks done     : {m['tasks_done']}/{m['tasks_total']}")
+    print(f"  tasks failed   : {m.get('tasks_failed', 0)}")
     print(f"  mission (wgt)  : {m['mission_completion'] * 100:.1f}%")
     print(f"  agents lost    : {m['agents_total'] - m['agents_alive']}/{m['agents_total']}")
     print(f"  reassignments  : {m['reassignments']}")
@@ -55,7 +56,8 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     results = compare_strategies(scenario, args.strategies)
     print(f"scenario={scenario.name} seed={scenario.seed} "
           f"agents={scenario.n_agents} tasks={scenario.n_tasks}\n")
-    header = f"{'rank':<5}{'strategy':<10}{'mission':<10}{'done':<9}{'ticks':<8}{'lost':<7}{'reassign':<9}"
+    header = (f"{'rank':<5}{'strategy':<10}{'mission':<10}{'done':<9}{'failed':<8}"
+              f"{'ticks':<8}{'lost':<7}{'reassign':<9}")
     print(header)
     print("-" * len(header))
     for i, r in enumerate(results, start=1):
@@ -63,7 +65,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         mission = f"{r.completion * 100:.1f}%"
         done = f"{r.tasks_done}/{r.tasks_total}"
         print(
-            f"{i:<5}{r.strategy:<10}{mission:<10}{done:<9}{ticks:<8}"
+            f"{i:<5}{r.strategy:<10}{mission:<10}{done:<9}{r.tasks_failed:<8}{ticks:<8}"
             f"{r.agents_lost:<7}{r.reassignments:<9}"
         )
     print(f"\nwinner: {results[0].strategy}")

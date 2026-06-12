@@ -71,7 +71,33 @@ ghost-commander compare --preset scarce              # ranking de estrategias
 ```
 
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
-escasos), `calm` (sin fallos). Estrategias: `greedy`, `auction`, `global`.
+escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
+*perder*). Estrategias: `greedy`, `auction`, `global`.
+
+### Cuándo la coordinación *gana o pierde* la misión
+
+En `default` sobran agentes incluso tras el shock, así que las tres estrategias
+completan (la diferencia es de **velocidad**). El escenario `contested` añade
+**deadlines de tarea**: una tarea que no se completa a tiempo **fracasa** — una
+pérdida de misión. Con una flota más justa bajo desgaste continuo, la calidad de
+la coordinación se vuelve **éxito**, no solo velocidad:
+
+```
+ghost-commander compare --preset contested
+rank strategy  mission   done     failed  ticks   lost   reassign
+------------------------------------------------------------------
+1    auction   98.5%     58/60    2       95      35     32
+2    global    96.3%     56/60    4       136     39     35
+3    greedy    88.8%     53/60    7       131     37     33
+```
+
+`greedy` pierde 7 tareas (es local y por orden de llegada: se amontona y
+reorganiza tarde); las estrategias que resuelven la contención globalmente
+(`auction`, `global`) salvan bastante más. **El hallazgo robusto across seeds es
+que `greedy` sacrifica más tareas bajo presión de deadline**; quién gana entre
+`auction` y `global` cambia según la misión. La métrica de misión está
+**ponderada por prioridad**, así que perder una tarea VITAL pesa más que perder
+una LOW.
 
 ---
 
@@ -135,9 +161,11 @@ pytest -q     # 19 tests: determinismo, validez de asignaciones, integración de
 
 ## Estado
 
-MVP v0.1.0 — ejecutable y demostrable hoy. Roadmap inmediato: deadlines de
-tareas (misiones que se pueden *fallar*), capacidades heterogéneas de agentes,
-y animación continua en el dashboard.
+MVP v0.1.0 — ejecutable y demostrable hoy. Ya incluye **deadlines de tarea**:
+las misiones se pueden *perder*, y la coordinación determina cuánto se salva
+(preset `contested`). Roadmap inmediato: capacidades heterogéneas de agentes,
+una estrategia *deadline-aware* (triage explícito por urgencia × prioridad), y
+animación continua en el dashboard.
 
 ## Licencia
 

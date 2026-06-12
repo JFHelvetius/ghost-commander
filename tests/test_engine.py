@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ghost_commander.core import EventType
-from ghost_commander.sim import Scenario, Simulation, run_scenario
+from ghost_commander.sim import PRESETS, Scenario, Simulation, run_scenario
 
 
 def test_calm_scenario_completes_all_tasks() -> None:
@@ -41,3 +41,29 @@ def test_first_frame_is_initial_state() -> None:
     assert rec.frames[0]["tick"] == 0
     # initial frame: nothing done yet
     assert rec.frames[0]["metrics"]["tasks_done"] == 0
+
+
+def test_no_deadlines_means_no_task_failures() -> None:
+    # Default scenario has deadlines off -> tasks can never expire.
+    rec = run_scenario(Scenario(seed=2, n_agents=80, n_tasks=20), "global")
+    assert rec.final_metrics["tasks_failed"] == 0
+
+
+def test_tight_deadline_under_attrition_fails_tasks() -> None:
+    sc = Scenario(seed=2, n_agents=40, n_tasks=40, shock_tick=8, shock_failure_rate=0.5,
+                  deadline_slack_factor=2.0, deadline_slack_base=6, max_ticks=300)
+    rec = run_scenario(sc, "greedy")
+    types = {e["type"] for e in rec.events}
+    assert str(EventType.TASK_FAILED) in types
+    assert rec.final_metrics["tasks_failed"] > 0
+    # done + failed accounts for every task once the mission settles or times out
+    m = rec.final_metrics
+    assert m["tasks_done"] + m["tasks_failed"] <= m["tasks_total"]
+
+
+def test_contested_preset_differentiates_strategies() -> None:
+    # Coordination quality should change mission success, not just speed.
+    sc = PRESETS["contested"]
+    greedy = run_scenario(sc, "greedy").final_metrics
+    glob = run_scenario(sc, "global").final_metrics
+    assert glob["mission_completion"] >= greedy["mission_completion"]
