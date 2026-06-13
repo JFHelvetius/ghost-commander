@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from .base import Assignment, priority_weight
+from .base import Assignment, can_handle, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import Agent, Task, World
@@ -49,6 +49,8 @@ class TriageStrategy:
         table: list[tuple[float, int, int]] = []  # (score, agent_id, task_id)
         for agent in agents:
             for task in tasks:
+                if not can_handle(agent, task):
+                    continue
                 table.append((self._score(agent, task, world.tick), agent.id, task.id))
 
         table.sort(key=lambda c: (-c[0], c[1], c[2]))

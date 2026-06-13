@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from ghost_commander.coordination import STRATEGIES
 from ghost_commander.core import EventType
 from ghost_commander.sim import PRESETS, Scenario, Simulation, run_scenario
 
@@ -102,3 +105,28 @@ def test_static_scenario_has_no_arrivals() -> None:
     rec = run_scenario(sc, "global")
     assert rec.final_metrics["tasks_total"] == 15
     assert not any(e["type"] == str(EventType.TASK_CREATED) for e in rec.events)
+
+
+@pytest.mark.parametrize("strategy", list(STRATEGIES))
+def test_specialization_is_always_respected(strategy: str) -> None:
+    # No agent is ever assigned a task it lacks the skill for, across the run.
+    sc = Scenario(seed=3, n_agents=40, n_tasks=40, shock_tick=8,
+                  agent_skills=("a", "b", "c"))
+    sim = Simulation(sc, strategy)
+    original = sim._advance_agents
+
+    def guarded(tick: int) -> None:
+        for ag in sim.world.alive_agents():
+            if ag.task_id is not None:
+                t = sim.world.tasks[ag.task_id]
+                assert ag.has_skill(t.required_skill), f"{ag.id} on wrong-skill {t.id}"
+        original(tick)
+
+    sim._advance_agents = guarded  # type: ignore[method-assign]
+    sim.run()
+
+
+def test_homogeneous_fleet_has_no_skill_requirements() -> None:
+    sim = Simulation(Scenario(seed=1, n_agents=20, n_tasks=10), "global")
+    assert all(not a.skills for a in sim.world.agents.values())
+    assert all(t.required_skill is None for t in sim.world.tasks.values())

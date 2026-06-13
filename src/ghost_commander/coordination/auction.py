@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, priority_weight
+from .base import Assignment, can_handle, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -39,6 +39,8 @@ class AuctionStrategy:
                 task = tasks[task_id]
                 best: tuple[float, int] | None = None  # (bid, agent_id)
                 for agent in available.values():
+                    if not can_handle(agent, task):
+                        continue
                     bid = priority_weight(task.priority) / (
                         agent.distance_to(task.x, task.y) + _EPS
                     )

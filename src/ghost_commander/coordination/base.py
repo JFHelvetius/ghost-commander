@@ -15,10 +15,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from ghost_commander.domain import World
+    from ghost_commander.domain import Agent, Task, World
 
 # A proposed assignment: (agent_id, task_id).
 Assignment = tuple[int, int]
+
+
+def can_handle(agent: Agent, task: Task) -> bool:
+    """Whether ``agent`` is eligible to work ``task`` (specialization check).
+
+    Every strategy must respect this so it never routes the wrong kind of agent
+    to a task; the engine also guards against it defensively.
+    """
+    return agent.has_skill(task.required_skill)
 
 
 @runtime_checkable
@@ -39,4 +48,4 @@ def priority_weight(priority: int) -> float:
     return float(priority) ** 2
 
 
-__all__ = ["Assignment", "CoordinationStrategy", "priority_weight"]
+__all__ = ["Assignment", "CoordinationStrategy", "can_handle", "priority_weight"]

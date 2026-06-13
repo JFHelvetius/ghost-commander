@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, priority_weight
+from .base import Assignment, can_handle, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -38,6 +38,8 @@ class GlobalStrategy:
         table: list[tuple[float, int, int]] = []  # (score, agent_id, task_id)
         for agent in agents:
             for task in tasks:
+                if not can_handle(agent, task):
+                    continue
                 d = agent.distance_to(task.x, task.y)
                 score = priority_weight(task.priority) / (d + _EPS)
                 table.append((score, agent.id, task.id))

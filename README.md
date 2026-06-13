@@ -73,8 +73,9 @@ ghost-commander compare --preset scarce              # ranking de estrategias
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 *perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`
-(entorno cambiante: tareas que llegan en oleadas). Estrategias: `greedy`,
-`auction`, `global`, `triage` (deadline-aware).
+(entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
+heterogénea con un especialista escaso). Estrategias: `greedy`, `auction`,
+`global`, `triage` (deadline-aware).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -145,6 +146,31 @@ Las estrategias coordinadas absorben las oleadas y completan; `greedy` no sigue
 el ritmo y pierde 18 tareas. `triage` es además la más **eficiente** (12
 reasignaciones y 39 agentes perdidos, frente a 33/54 de greedy).
 
+### Agentes heterogéneos: enrutar al tipo correcto
+
+Hasta aquí cualquier agente servía para cualquier tarea. El preset `specialist`
+da a cada agente **una especialidad** (`recon`, `repair`, `medical`) y a cada
+tarea un **skill requerido**: una tarea de reparación solo la trabaja un técnico.
+Y los técnicos son **escasos** (20% de la flota) frente a una demanda de
+reparación pareja → un cuello de botella. Ya no basta con mandar al más cercano:
+hay que enrutar al *tipo* correcto y triagear a los especialistas escasos.
+
+```
+ghost-commander compare --preset specialist
+rank strategy  mission   done     failed  ticks   lost   reassign
+------------------------------------------------------------------
+1    triage    84.2%     47/60    13      111     32     25
+2    auction   82.9%     46/60    14      112     32     23
+3    global    81.5%     44/60    16      107     32     23
+4    greedy    78.1%     42/60    18      112     32     25
+```
+
+La restricción de especialidad se respeta siempre (un agente nunca trabaja una
+tarea de skill ajeno). Bajo el cuello de los especialistas escasos, `triage` es
+el ganador **medio** across seeds (gana 4 de 6); `greedy` gestiona peor la flota.
+La especialización es **opt-in**: sin `agent_skills`, la flota es homogénea y los
+escenarios anteriores conservan su digest determinista exacto.
+
 ---
 
 ## Qué hay dentro
@@ -211,10 +237,11 @@ pytest -q     # 19 tests: determinismo, validez de asignaciones, integración de
 
 MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
 misiones se pueden *perder*), una estrategia **deadline-aware (`triage`)** que
-gana cuando los plazos aprietan (`rush`), y **entornos cambiantes** con tareas
-que llegan durante la misión (`streaming`). Roadmap inmediato: capacidades
-heterogéneas de agentes (especialización), agentes que recargan/reparan, y
-animación continua en el dashboard.
+gana cuando los plazos aprietan (`rush`), **entornos cambiantes** con tareas que
+llegan durante la misión (`streaming`), y **agentes heterogéneos** con
+especialización y cuellos de botella (`specialist`). Roadmap inmediato: agentes
+que recargan/reparan (recuperación), tareas que requieren cooperación de varios
+especialistas a la vez, y animación continua en el dashboard.
 
 ## Licencia
 

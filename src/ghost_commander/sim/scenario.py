@@ -56,6 +56,15 @@ class Scenario:
     # priority distribution weights for LOW..VITAL (1..5)
     priority_weights: tuple[float, ...] = (0.30, 0.30, 0.22, 0.13, 0.05)
 
+    # specialization (opt-in). ``agent_skills`` is the roster of skills; each
+    # agent gets exactly one, drawn with ``agent_skill_weights`` (uneven weights
+    # make a skill scarce -> a bottleneck the commander must manage). Each task
+    # requires one of those skills (also weighted). Empty roster = homogeneous
+    # fleet, no extra RNG draws, existing scenario digests unchanged.
+    agent_skills: tuple[str, ...] = ()
+    agent_skill_weights: tuple[float, ...] = ()
+    task_skill_weights: tuple[float, ...] = ()
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -63,14 +72,18 @@ class Scenario:
         world = World(width=self.width, height=self.height)
 
         for i in range(self.n_agents):
+            x = rng.uniform(0, self.width)
+            y = rng.uniform(0, self.height)
+            skills = self._draw_agent_skill(rng)
             world.add_agent(
                 Agent(
                     id=i,
-                    x=rng.uniform(0, self.width),
-                    y=rng.uniform(0, self.height),
+                    x=x,
+                    y=y,
                     speed=self.agent_speed,
                     capacity=self.agent_capacity,
                     resources=1.0,
+                    skills=skills,
                 )
             )
 
@@ -104,6 +117,7 @@ class Scenario:
         priority = self._draw_priority(rng)
         workload = rng.uniform(self.task_min_workload, self.task_max_workload)
         offset = self._deadline_offset(workload)
+        required_skill = self._draw_task_skill(rng)
         return Task(
             id=task_id,
             x=x,
@@ -113,7 +127,29 @@ class Scenario:
             required_agents=1,
             created_tick=created_tick,
             deadline_tick=None if offset is None else created_tick + offset,
+            required_skill=required_skill,
         )
+
+    def _draw_agent_skill(self, rng: RandomSource) -> frozenset[str]:
+        if not self.agent_skills:
+            return frozenset()
+        return frozenset({self._weighted_choice(rng, self.agent_skills, self.agent_skill_weights)})
+
+    def _draw_task_skill(self, rng: RandomSource) -> str | None:
+        if not self.agent_skills:
+            return None
+        return self._weighted_choice(rng, self.agent_skills, self.task_skill_weights)
+
+    @staticmethod
+    def _weighted_choice(rng: RandomSource, items: tuple[str, ...], weights: tuple[float, ...]) -> str:
+        w = weights if len(weights) == len(items) else tuple(1.0 for _ in items)
+        r = rng.uniform(0, sum(w))
+        acc = 0.0
+        for item, wi in zip(items, w, strict=True):
+            acc += wi
+            if r <= acc:
+                return item
+        return items[-1]
 
     def _deadline_offset(self, workload: float) -> int | None:
         if self.deadline_slack_factor <= 0:
@@ -195,6 +231,26 @@ PRESETS: dict[str, Scenario] = {
         shock_failure_rate=0.30,
         deadline_slack_factor=3.0,
         deadline_slack_base=12,
+    ),
+    # Specialist: a heterogeneous fleet. Three skills, but "repair" agents are
+    # scarce (20% of the fleet) while repair tasks are common — a bottleneck.
+    # Now it is not enough to send the nearest agent; the commander must route
+    # the right *kind* of agent and triage the scarce specialists. Deadlines on.
+    "specialist": Scenario(
+        name="specialist",
+        seed=42,
+        n_agents=60,
+        n_tasks=60,
+        max_ticks=300,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=20,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.5,
+        deadline_slack_base=14,
+        agent_skills=("recon", "repair", "medical"),
+        agent_skill_weights=(0.5, 0.2, 0.3),   # repair is scarce
+        task_skill_weights=(0.34, 0.33, 0.33),  # repair demand ~ even -> oversubscribed
     ),
 }
 

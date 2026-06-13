@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, priority_weight
+from .base import Assignment, can_handle, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -29,7 +29,7 @@ class GreedyStrategy:
             best_task_id: int | None = None
             best_score = -1.0
             for task in world.assignable_tasks():
-                if slots.get(task.id, 0) <= 0:
+                if slots.get(task.id, 0) <= 0 or not can_handle(agent, task):
                     continue
                 d = agent.distance_to(task.x, task.y)
                 score = priority_weight(task.priority) / (d + _EPS)

@@ -32,10 +32,21 @@ class Agent:
     resources: float = 1.0
     status: AgentStatus = AgentStatus.IDLE
     task_id: int | None = None
+    # specialization: the skills this agent can perform. Empty = generalist
+    # (only useful for tasks that require no specific skill). Heterogeneous
+    # fleets are opt-in per scenario, so homogeneous missions are unaffected.
+    skills: frozenset[str] = field(default_factory=frozenset)
     # bookkeeping
     distance_travelled: float = 0.0
     work_done: float = 0.0
     failed_tick: int | None = field(default=None)
+
+    def has_skill(self, skill: str | None) -> bool:
+        """True if this agent can perform a task requiring ``skill``.
+
+        ``None`` means the task needs no specialization — anyone qualifies.
+        """
+        return skill is None or skill in self.skills
 
     @property
     def alive(self) -> bool:
@@ -70,6 +81,7 @@ class Agent:
             "resources": round(self.resources, 4),
             "status": str(self.status),
             "task_id": self.task_id,
+            "skill": next(iter(sorted(self.skills)), None),
         }
 
 

@@ -111,7 +111,11 @@ class Simulation:
         for agent_id, task_id in self.strategy.assign(self.world):
             agent = self.world.agents[agent_id]
             task = self.world.tasks[task_id]
-            if not agent.available or not task.needs_more_agents:
+            if (
+                not agent.available
+                or not task.needs_more_agents
+                or not agent.has_skill(task.required_skill)
+            ):
                 continue
             agent.task_id = task_id
             agent.status = AgentStatus.MOVING

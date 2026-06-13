@@ -47,6 +47,10 @@ class Task:
     status: TaskStatus = TaskStatus.PENDING
     assigned: set[int] = field(default_factory=set)
     deadline_tick: int | None = None
+    # specialization: only agents with this skill can work the task. None = any
+    # agent qualifies. Lets the commander reason about *which kind* of agent,
+    # not just which is nearest.
+    required_skill: str | None = None
     # bookkeeping
     remaining: float = field(default=0.0)
     created_tick: int = 0
@@ -88,6 +92,7 @@ class Task:
             "progress": round(self.progress, 4),
             "assigned": sorted(self.assigned),
             "deadline_tick": self.deadline_tick,
+            "required_skill": self.required_skill,
         }
 
 

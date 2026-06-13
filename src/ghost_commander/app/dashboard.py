@@ -63,7 +63,9 @@ def _map_figure(frame: dict, width: float, height: float) -> go.Figure:
                         size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
                         color=style["color"], line=dict(width=1, color=style["line"])),
             text=[f"task {t['id']} · prio {t['priority']} · {t['status']} · "
-                  f"{int(t['progress']*100)}%" for t in sel],
+                  f"{int(t['progress']*100)}%"
+                  + (f" · req:{t['required_skill']}" if t.get("required_skill") else "")
+                  for t in sel],
             hoverinfo="text",
         ))
 
@@ -72,6 +74,7 @@ def _map_figure(frame: dict, width: float, height: float) -> go.Figure:
         xs = [a["x"] for a in agents if a["status"] == status]
         ys = [a["y"] for a in agents if a["status"] == status]
         txt = [f"agent {a['id']} · {a['status']} · res {int(a['resources']*100)}%"
+               + (f" · {a['skill']}" if a.get("skill") else "")
                for a in agents if a["status"] == status]
         if xs:
             fig.add_trace(go.Scatter(
