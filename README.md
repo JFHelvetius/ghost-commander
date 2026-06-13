@@ -72,7 +72,8 @@ ghost-commander compare --preset scarce              # ranking de estrategias
 
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
-*perder*). Estrategias: `greedy`, `auction`, `global`.
+*perder*), `rush` (plazos muy ajustados, escaparate del triage). Estrategias:
+`greedy`, `auction`, `global`, `triage` (deadline-aware).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -99,6 +100,28 @@ que `greedy` sacrifica más tareas bajo presión de deadline**; quién gana entr
 **ponderada por prioridad**, así que perder una tarea VITAL pesa más que perder
 una LOW.
 
+### Cuando los plazos aprietan: triage deadline-aware
+
+Las cuatro estrategias anteriores pesan prioridad contra distancia pero **ignoran
+el tiempo**. La estrategia `triage` estima si un agente *aún llega* a una tarea
+antes de su deadline (`tiempo_viaje + tiempo_trabajo` vs `slack`): descarta las
+causas perdidas y se lanza a las tareas salvables y urgentes, las críticas
+primero. Con plazos holgados se comporta como `global`; cuando aprietan, gana:
+
+```
+ghost-commander compare --preset rush
+rank strategy  mission   done     failed  ticks   lost   reassign
+------------------------------------------------------------------
+1    triage    88.3%     48/60    12      80      28     23
+2    global    84.1%     44/60    16      80      28     23
+3    auction   79.3%     43/60    17      80      28     24
+4    greedy    69.0%     37/60    23      80      28     28
+```
+
+`triage` salva **11 tareas más que `greedy`** en la misma misión. Across seeds es
+el ganador medio cuando los deadlines son ajustados; con deadlines desactivados
+produce exactamente la misma misión que `global` (mismo digest determinista).
+
 ---
 
 ## Qué hay dentro
@@ -110,7 +133,7 @@ src/ghost_commander/
     events.py    #   EventBus tipado + catálogo de eventos (timeline)
     clock.py     #   reloj de paso fijo determinista
   domain/        # modelo: Agent, Task, World
-  coordination/  # estrategias intercambiables: greedy, auction, global
+  coordination/  # estrategias intercambiables: greedy, auction, global, triage
   sim/           # motor, modelo de fallos, métricas, grabador, comparador
   app/           # dashboard Streamlit
   cli.py         # entrada de línea de comandos
@@ -161,11 +184,11 @@ pytest -q     # 19 tests: determinismo, validez de asignaciones, integración de
 
 ## Estado
 
-MVP v0.1.0 — ejecutable y demostrable hoy. Ya incluye **deadlines de tarea**:
-las misiones se pueden *perder*, y la coordinación determina cuánto se salva
-(preset `contested`). Roadmap inmediato: capacidades heterogéneas de agentes,
-una estrategia *deadline-aware* (triage explícito por urgencia × prioridad), y
-animación continua en el dashboard.
+MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
+misiones se pueden *perder*) y una estrategia **deadline-aware (`triage`)** que
+gana cuando los plazos aprietan (preset `rush`). Roadmap inmediato: capacidades
+heterogéneas de agentes, tareas que llegan durante la misión (no solo al inicio),
+y animación continua en el dashboard.
 
 ## Licencia
 

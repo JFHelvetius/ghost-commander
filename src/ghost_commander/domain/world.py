@@ -16,6 +16,9 @@ class World:
     height: float
     agents: dict[int, Agent] = field(default_factory=dict)
     tasks: dict[int, Task] = field(default_factory=dict)
+    # current simulation tick — part of the state, so deadline-aware strategies
+    # can reason about urgency without changing the pure assign(world) interface.
+    tick: int = 0
 
     # ------------------------------------------------------------------ adds
     def add_agent(self, agent: Agent) -> None:

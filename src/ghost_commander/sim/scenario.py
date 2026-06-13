@@ -131,6 +131,23 @@ PRESETS: dict[str, Scenario] = {
         deadline_slack_factor=4.0,
         deadline_slack_base=16,
     ),
+    # Rush: deadlines so tight that most tasks are at risk, but the mission is
+    # winnable *if you triage*. This is where deadline-awareness pays off — the
+    # `triage` strategy drops lost causes and rushes savable at-risk tasks,
+    # beating the time-blind strategies on mission success.
+    "rush": Scenario(
+        name="rush",
+        seed=42,
+        n_agents=50,
+        n_tasks=60,
+        max_ticks=240,
+        agent_speed=2.6,
+        random_failure_rate=0.004,
+        shock_tick=18,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=2.5,
+        deadline_slack_base=8,
+    ),
 }
 
 

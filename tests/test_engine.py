@@ -67,3 +67,19 @@ def test_contested_preset_differentiates_strategies() -> None:
     greedy = run_scenario(sc, "greedy").final_metrics
     glob = run_scenario(sc, "global").final_metrics
     assert glob["mission_completion"] >= greedy["mission_completion"]
+
+
+def test_triage_wins_when_deadlines_are_tight() -> None:
+    # Under the rush preset (tight, savable-if-triaged deadlines) the
+    # deadline-aware strategy should beat all time-blind strategies.
+    sc = PRESETS["rush"]
+    triage = run_scenario(sc, "triage").final_metrics["mission_completion"]
+    for blind in ("greedy", "auction", "global"):
+        other = run_scenario(sc, blind).final_metrics["mission_completion"]
+        assert triage >= other, f"triage {triage} should beat {blind} {other}"
+
+
+def test_triage_without_deadlines_matches_global() -> None:
+    # With deadlines off, triage's score reduces to global's -> identical run.
+    sc = Scenario(seed=8, n_agents=60, n_tasks=25, shock_tick=10)
+    assert run_scenario(sc, "triage").digest() == run_scenario(sc, "global").digest()

@@ -93,6 +93,7 @@ class Simulation:
 
     def step(self) -> None:
         tick = self.clock.advance()
+        self.world.tick = tick
         self._reassign(tick)
         self._advance_agents(tick)
         self._apply_failures(tick)

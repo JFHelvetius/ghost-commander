@@ -6,12 +6,14 @@ from .auction import AuctionStrategy
 from .base import Assignment, CoordinationStrategy, priority_weight
 from .global_opt import GlobalStrategy
 from .greedy import GreedyStrategy
+from .triage import TriageStrategy
 
 #: Registry used by the CLI, dashboard and comparison tooling.
 STRATEGIES: dict[str, type] = {
     GreedyStrategy.name: GreedyStrategy,
     AuctionStrategy.name: AuctionStrategy,
     GlobalStrategy.name: GlobalStrategy,
+    TriageStrategy.name: TriageStrategy,
 }
 
 
@@ -31,6 +33,7 @@ __all__ = [
     "CoordinationStrategy",
     "GlobalStrategy",
     "GreedyStrategy",
+    "TriageStrategy",
     "make_strategy",
     "priority_weight",
 ]
