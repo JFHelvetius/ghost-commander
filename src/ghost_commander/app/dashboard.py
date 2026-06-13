@@ -23,6 +23,35 @@ from ghost_commander.sim.recorder import RunRecording
 _BG = "#0e1117"
 _FG = "#cdd3df"
 
+
+def _logo(size: int = 44) -> str:
+    """Inline SVG mark: a command hub reassigning agent nodes (hub-and-spoke).
+
+    Bespoke identity for Ghost Commander — a central commander (green core)
+    directing peripheral agents (blue nodes) over live links. Deliberately not
+    an emoji.
+    """
+    return f"""
+<svg width="{size}" height="{size}" viewBox="0 0 100 100" fill="none"
+     xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle">
+  <circle cx="50" cy="50" r="46" fill="#0e1117" stroke="#27d17c" stroke-width="3"/>
+  <g stroke="#3aa0ff" stroke-width="2.4" opacity="0.75" stroke-linecap="round">
+    <line x1="50" y1="50" x2="26" y2="28"/>
+    <line x1="50" y1="50" x2="76" y2="32"/>
+    <line x1="50" y1="50" x2="28" y2="74"/>
+    <line x1="50" y1="50" x2="74" y2="72"/>
+  </g>
+  <g fill="#3aa0ff">
+    <circle cx="26" cy="28" r="6.5"/>
+    <circle cx="76" cy="32" r="6.5"/>
+    <circle cx="28" cy="74" r="6.5"/>
+    <circle cx="74" cy="72" r="6.5"/>
+  </g>
+  <circle cx="50" cy="50" r="12" fill="#27d17c"/>
+  <circle cx="50" cy="50" r="12" fill="none" stroke="#0e1117" stroke-width="2.5"/>
+</svg>
+"""
+
 _STATUS_COLOR = {
     "idle": "#7f8c9b",
     "moving": "#3aa0ff",
@@ -158,9 +187,38 @@ def _progress_figure(rec: RunRecording, tick: int, shock_tick: int | None) -> go
     return fig
 
 
+_CSS = """
+<style>
+:root { --gc-green:#27d17c; --gc-blue:#3aa0ff; }
+.gc-hero {
+  display:flex; align-items:center; gap:16px;
+  padding:14px 20px; margin:-8px 0 6px 0; border-radius:14px;
+  background:linear-gradient(100deg,#11161f 0%,#0e1117 60%);
+  border:1px solid #1d2533;
+}
+.gc-hero h1 {
+  margin:0; font-size:1.55rem; font-weight:800; letter-spacing:.06em;
+  background:linear-gradient(90deg,#27d17c,#3aa0ff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.gc-hero p { margin:2px 0 0 0; color:#9aa6b8; font-size:.9rem; }
+.gc-side-logo { display:flex; align-items:center; gap:10px; margin-bottom:2px; }
+.gc-side-logo span { font-weight:800; letter-spacing:.04em; font-size:1.05rem; color:#e6ebf3; }
+.gc-chip {
+  display:inline-block; padding:2px 9px; margin:2px 4px 2px 0; border-radius:20px;
+  background:#161b25; border:1px solid #232c3b; font-size:.72rem; color:#9aa6b8;
+}
+[data-testid="stMetricValue"] { font-size:1.5rem; }
+</style>
+"""
+
+
 # ----------------------------------------------------------------------- sidebar
 def _sidebar() -> tuple[Scenario, str]:
-    st.sidebar.title("👻 Ghost Commander")
+    st.sidebar.markdown(
+        f'<div class="gc-side-logo">{_logo(34)}<span>GHOST COMMANDER</span></div>',
+        unsafe_allow_html=True,
+    )
     st.sidebar.caption("Coordinación dinámica de cientos de agentes autónomos")
 
     preset_name = st.sidebar.selectbox("Escenario", list(PRESETS), index=0)
@@ -188,7 +246,8 @@ def _sidebar() -> tuple[Scenario, str]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Ghost Commander", page_icon="👻", layout="wide")
+    st.set_page_config(page_title="Ghost Commander", page_icon="🧭", layout="wide")
+    st.markdown(_CSS, unsafe_allow_html=True)
     scenario, strategy = _sidebar()
 
     run_clicked = st.sidebar.button("▶ Ejecutar misión", type="primary",
@@ -205,18 +264,56 @@ def main() -> None:
 
     st.sidebar.markdown(
         "<small>Determinista: misma seed + escenario + estrategia ⇒ misma misión, "
-        "bit a bit.<br>[Repo en GitHub](https://github.com/JFHelvetius/ghost-commander)"
+        "bit a bit.<br>[Código en GitHub](https://github.com/JFHelvetius/ghost-commander)"
         "</small>", unsafe_allow_html=True,
     )
 
-    st.markdown("#### 👻 Ghost Commander — un comandante digital que reasigna "
-                "recursos autónomos en tiempo real")
+    st.markdown(
+        f'<div class="gc-hero">{_logo(46)}<div>'
+        f'<h1>GHOST COMMANDER</h1>'
+        f'<p>Un comandante digital que coordina cientos de agentes autónomos en '
+        f'entornos cambiantes, maximizando el éxito de la misión mediante '
+        f'reasignación dinámica de recursos.</p></div></div>',
+        unsafe_allow_html=True,
+    )
+    _intro()
 
     tab_mission, tab_compare = st.tabs(["🛰  Misión", "📊  Comparar estrategias"])
     with tab_mission:
         _render_mission(st.session_state["rec"], st.session_state.get("scenario", scenario))
     with tab_compare:
         _render_compare(scenario)
+
+
+def _intro() -> None:
+    """Explain what the demo is and how to read it — for first-time visitors."""
+    with st.expander("¿Qué estoy viendo? — cómo leer el dashboard", expanded=False):
+        st.markdown(
+            """
+**El problema.** Cientos de agentes autónomos (drones, vehículos, robots) deben
+completar un campo de tareas repartidas en un mapa. Pero el mundo cambia: los
+agentes **fallan**, una **onda de choque** tumba a un tercio de la flota de
+golpe, llegan **tareas nuevas** a mitad de misión, algunas exigen un **tipo**
+concreto de agente o un **equipo** completo, y los recursos **se agotan**. El
+comandante digital reasigna la flota en tiempo real para salvar la misión.
+
+**Cómo leer el mapa.**
+
+- 🟩 **verde** trabajando · 🟦 **azul** en ruta · ⬜ **gris** libre · 🟪 **morado** recargando · 🟥 caído
+- ⬛ **cuadrados** = tareas (tamaño = prioridad) · ▢ atenuado = hecha · ✕ roja = **fallada** (deadline perdido) · ◆ = base de recarga
+- Arrastra el **replay** para rebobinar la misión tick a tick. La línea roja
+  punteada del gráfico marca la onda de choque.
+
+**Pruébalo.** Cambia el **escenario** (barra lateral) y compara estrategias en
+la pestaña 📊: con el mismo escenario y seed, *solo cambia el algoritmo*, así que
+la diferencia que ves es pura coordinación.
+
+> El proyecto modela 8 dimensiones del problema real (fallos, deadlines,
+> entornos cambiantes, especialización, recuperación, cooperación…), todas
+> deterministas y reproducibles. El dashboard es solo la ventana; el motor está
+> en [GitHub](https://github.com/JFHelvetius/ghost-commander).
+"""
+        )
 
 
 def _render_mission(rec: RunRecording, scenario: Scenario) -> None:

@@ -48,17 +48,21 @@ reasignaciones: la comparación hace visible *por qué* la coordinación importa
 
 ---
 
-## Demo en vivo (Streamlit Community Cloud)
+## Demo en vivo
 
-El dashboard está listo para desplegar en [share.streamlit.io](https://share.streamlit.io):
-el repo incluye `streamlit_app.py` (entry point), `requirements.txt` y
-`.streamlit/config.toml` (tema oscuro). Pasos:
+**▶ [ghost-commander.streamlit.app](https://ghost-commander-2payzpkpventdr3jqx95bg.streamlit.app/)**
 
-1. Entra en share.streamlit.io con tu cuenta de GitHub.
-2. **New app** → repo `JFHelvetius/ghost-commander`, branch `main`, archivo
-   `streamlit_app.py`.
-3. Deploy. La app autoejecuta una misión al cargar, así que se ve algo de
-   inmediato.
+Toca los 9 escenarios, cambia la estrategia y arrastra el replay para ver cómo
+la flota se reorganiza tras la onda de choque. Todo determinista: misma seed +
+escenario + estrategia ⇒ misma misión.
+
+<details><summary>Cómo se despliega (Streamlit Community Cloud)</summary>
+
+El repo incluye `streamlit_app.py` (entry point), `requirements.txt` y
+`.streamlit/config.toml`. En [share.streamlit.io](https://share.streamlit.io):
+New app → repo `JFHelvetius/ghost-commander`, branch `main`, archivo
+`streamlit_app.py`. Auto-redespliega en cada push a `main`.
+</details>
 
 ## Instalación
 
