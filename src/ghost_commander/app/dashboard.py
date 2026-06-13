@@ -87,21 +87,17 @@ _SCENARIO_DESC = {
 
 # --------------------------------------------------------------------------- map
 # Fixed trace order so Plotly can animate frame-to-frame (trace count is constant):
-#   0 links · 1 bases · 2 tasks-open · 3 tasks-done · 4 tasks-failed · 5 agents
-import math as _math
-
-
-def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> list[go.Scatter]:
-    """Fixed traces for one tick. Agents live in a SINGLE id-ordered trace so Plotly
-    can interpolate each agent's position between ticks (smooth gliding), with
-    per-point colour/symbol/heading."""
+#   0 links · 1 bases · 2 tasks-open · 3 tasks-done · 4 tasks-failed · 5 halo · 6 core
+def _frame_scatters(frame: dict) -> list[go.Scatter]:
+    """Fixed traces for one tick. Agents live in a SINGLE id-ordered pair of traces
+    (a soft glow halo + a crisp core) so Plotly interpolates each agent's position
+    between ticks -> smooth, continuous motion (no teleporting)."""
     world = frame["world"]
     agents = sorted(world["agents"], key=lambda a: a["id"])
     tasks = world["tasks"]
     bases = world.get("bases", [])
     tpos = {t["id"]: (t["x"], t["y"]) for t in tasks}
 
-    # assignment links — see the commander wire agents to tasks (and rewire it)
     lx: list[float | None] = []
     ly: list[float | None] = []
     for a in agents:
@@ -111,7 +107,7 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
             ly += [a["y"], ty, None]
     traces: list[go.Scatter] = [go.Scatter(
         x=lx, y=ly, mode="lines", name="asignaciones",
-        line=dict(color="rgba(58,160,255,0.20)", width=1), hoverinfo="skip",
+        line=dict(color="rgba(58,160,255,0.16)", width=1), hoverinfo="skip",
         showlegend=False,
     )]
 
@@ -127,15 +123,16 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
 
     for bucket, (symbol, color) in {
         "open": ("square", "#f4b942"),
-        "done": ("square-open", "#33406b"),
-        "failed": ("x", "#e0484f"),
+        "done": ("square-open", "#36507a"),
+        "failed": ("x-thin", "#e0484f"),
     }.items():
         sel = [t for t in tasks if _bucket(t) == bucket]
         traces.append(go.Scatter(
             x=[t["x"] for t in sel], y=[t["y"] for t in sel], mode="markers",
             name=f"tarea·{bucket}", showlegend=False,
             marker=dict(symbol=symbol, size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
-                        color=color, line=dict(width=1, color=color)),
+                        color=color, opacity=0.55 if bucket == "open" else 1.0,
+                        line=dict(width=1.4 if bucket == "failed" else 1, color=color)),
             text=[f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                   + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
                   + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else "")
@@ -143,36 +140,34 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
             hoverinfo="text",
         ))
 
-    # agents: ONE stable trace (ordered by id) -> Plotly glides each between ticks
+    # agents: id-stable position so each one interpolates smoothly between ticks
     ax: list[float | None] = []
     ay: list[float | None] = []
-    colors, sizes, symbols, angles, htxt = [], [], [], [], []
+    core_c, halo_c, core_s, halo_s, htxt = [], [], [], [], []
     for a in agents:
         st_ = a["status"]
         if st_ == "failed":
             ax.append(None); ay.append(None)
-            colors.append(_STATUS_COLOR["failed"]); sizes.append(7)
-            symbols.append("circle"); angles.append(0); htxt.append("")
+            core_c.append("#000"); halo_c.append("#000")
+            core_s.append(6); halo_s.append(12); htxt.append("")
             continue
         ax.append(a["x"]); ay.append(a["y"])
-        colors.append(_STATUS_COLOR.get(st_, "#cccccc"))
-        sizes.append(7 + 5 * float(a["resources"]))  # bigger = more resources
-        if st_ == "moving" and a["id"] in prev_pos:
-            px, py = prev_pos[a["id"]]
-            dx, dy = a["x"] - px, a["y"] - py
-            if dx * dx + dy * dy > 1e-6:
-                symbols.append("triangle-up")
-                angles.append(_math.degrees(_math.atan2(dx, dy)))  # 0=up, clockwise
-            else:
-                symbols.append("circle"); angles.append(0)
-        else:
-            symbols.append("circle"); angles.append(0)
+        col = _STATUS_COLOR.get(st_, "#cccccc")
+        core_c.append(col); halo_c.append(col)
+        cs = 6.0 + 3.0 * float(a["resources"])  # bigger = more resources
+        core_s.append(cs); halo_s.append(cs + 11)
         htxt.append(f"agente {a['id']} · {st_} · recursos {int(a['resources']*100)}%"
                     + (f" · {a['skill']}" if a.get("skill") else ""))
+    # soft glow underneath
+    traces.append(go.Scatter(
+        x=ax, y=ay, mode="markers", name="halo", showlegend=False, hoverinfo="skip",
+        marker=dict(size=halo_s, color=halo_c, opacity=0.16, line=dict(width=0)),
+    ))
+    # crisp core on top
     traces.append(go.Scatter(
         x=ax, y=ay, mode="markers", name="agentes", showlegend=False,
-        marker=dict(size=sizes, color=colors, symbol=symbols, angle=angles,
-                    line=dict(width=0.6, color="rgba(255,255,255,0.25)")),
+        marker=dict(size=core_s, color=core_c, line=dict(width=0.6,
+                    color="rgba(255,255,255,0.35)")),
         text=htxt, hoverinfo="text",
     ))
     return traces
@@ -181,29 +176,22 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
 def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.Figure:
     """A play-able, scrubbable map: watch the fleet glide, fail and reorganize."""
     n = len(rec.frames)
-    step = max(1, n // 90)  # cap frames so the payload stays light
+    # One animation frame per tick when feasible (agents move only ~speed per tick,
+    # so motion is small and smooth). Subsample only very long runs, lightly.
+    step = max(1, -(-n // 240))  # ceil division -> <= 240 frames
     idxs = list(range(0, n, step))
     if idxs[-1] != n - 1:
         idxs.append(n - 1)
 
-    def _pos(i: int) -> dict[int, tuple[float, float]]:
-        return {a["id"]: (a["x"], a["y"]) for a in rec.frames[i]["world"]["agents"]}
+    base = _frame_scatters(rec.frames[idxs[0]])
+    frames = [go.Frame(data=_frame_scatters(rec.frames[i]), name=str(i)) for i in idxs]
 
-    data = []
-    prev = {}
-    for k, i in enumerate(idxs):
-        scat = _frame_scatters(rec.frames[i], prev)
-        if k == 0:
-            base = scat
-        data.append(go.Frame(data=scat, name=str(i)))
-        prev = _pos(i)
-    frames = data
-
-    # frame duration ~ transition duration => points glide continuously
-    trans = {"duration": 130, "easing": "linear"}
+    # frame duration == transition duration => constant-velocity, continuous glide
+    dur = 120
     play = dict(label="▶ Reproducir", method="animate",
-                args=[None, {"frame": {"duration": 140, "redraw": True},
-                             "fromcurrent": True, "transition": trans}])
+                args=[None, {"frame": {"duration": dur, "redraw": True},
+                             "fromcurrent": True,
+                             "transition": {"duration": dur, "easing": "linear"}}])
     pause = dict(label="⏸ Pausa", method="animate",
                  args=[[None], {"frame": {"duration": 0, "redraw": False},
                                 "mode": "immediate"}])
@@ -213,10 +201,10 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
         height=600, margin=dict(l=8, r=8, t=8, b=8),
         plot_bgcolor="#0b0e14", paper_bgcolor=_BG, font=dict(color=_FG),
         showlegend=False,
-        xaxis=dict(range=[0, width], showgrid=True, gridcolor="rgba(58,160,255,0.06)",
-                   zeroline=False, showticklabels=False, ticks="", dtick=width / 10),
-        yaxis=dict(range=[0, height], showgrid=True, gridcolor="rgba(58,160,255,0.06)",
-                   zeroline=False, showticklabels=False, ticks="", dtick=height / 10,
+        xaxis=dict(range=[0, width], showgrid=True, gridcolor="rgba(80,110,150,0.07)",
+                   zeroline=False, showticklabels=False, ticks="", dtick=width / 12),
+        yaxis=dict(range=[0, height], showgrid=True, gridcolor="rgba(80,110,150,0.07)",
+                   zeroline=False, showticklabels=False, ticks="", dtick=height / 12,
                    scaleanchor="x", scaleratio=1),
         updatemenus=[dict(
             type="buttons", direction="left", x=0.0, y=1.09, xanchor="left",
@@ -227,6 +215,7 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
             active=len(idxs) - 1, x=0.0, len=1.0, y=-0.02, pad=dict(t=6),
             currentvalue=dict(prefix="paso ", font=dict(color=_FG, size=12)),
             font=dict(size=9, color="#9aa6b8"),
+            transition={"duration": 0},
             steps=[dict(method="animate", label=str(i),
                         args=[[str(i)], {"frame": {"duration": 0, "redraw": True},
                                          "mode": "immediate"}]) for i in idxs],
