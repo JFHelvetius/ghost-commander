@@ -75,7 +75,8 @@ escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 *perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`
 (entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
 heterogénea con un especialista escaso), `endurance` (desgaste largo con bases
-de recarga). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware).
+de recarga), `joint` (tareas cooperativas que exigen equipos). Estrategias:
+`greedy`, `auction`, `global`, `triage` (deadline-aware).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -193,6 +194,30 @@ tiempo de ir a repostar puede costar más puntualidad de la que ahorra — recar
 es una decisión con coste, no un free lunch. La recuperación es **opt-in**
 (`n_bases=0` la desactiva sin tocar los digests existentes).
 
+### Tareas cooperativas: coordinación *entre* agentes
+
+Hasta aquí cada tarea la hacía un agente. El preset `joint` hace que ~40% de las
+tareas necesiten un **equipo de 2 agentes presentes a la vez**: el progreso solo
+ocurre cuando el equipo completo está en el sitio. Ahora el comandante no solo
+asigna singletons, debe **sincronizar llegadas** — un agente que llega antes
+espera (y gasta recursos), y una tarea de equipo se **estanca** si pierde a uno
+de los suyos. Es coordinación entre agentes, no solo asignación.
+
+```
+ghost-commander compare --preset joint
+rank strategy  mission   done     failed  ticks   lost   reassign
+------------------------------------------------------------------
+1    global    100.0%    50/50    0       78      37     25
+2    triage    100.0%    50/50    0       80      37     26
+3    auction   100.0%    50/50    0       97      38     27
+4    greedy     88.5%    43/50    7       97      40     33
+```
+
+Las estrategias que reparten globalmente forman equipos y completan las 19
+tareas de equipo; `greedy` sincroniza mal bajo la onda de choque y pierde 7.
+Cooperación **opt-in** (`cooperative_fraction=0` la desactiva; los demás
+escenarios siguen siendo de un agente, byte-idénticos).
+
 ---
 
 ## Qué hay dentro
@@ -262,10 +287,10 @@ misiones se pueden *perder*), una estrategia **deadline-aware (`triage`)** que
 gana cuando los plazos aprietan (`rush`), **entornos cambiantes** con tareas que
 llegan durante la misión (`streaming`), **agentes heterogéneos** con
 especialización y cuellos de botella (`specialist`), y **recuperación** con bases
-de recarga que sostienen la flota en misiones de desgaste (`endurance`). Roadmap
-inmediato: tareas que requieren cooperación de varios especialistas a la vez,
-estrategia consciente de recarga (anticipar el repostaje), y animación continua
-en el dashboard.
+de recarga que sostienen la flota en misiones de desgaste (`endurance`), y
+**tareas cooperativas** que exigen equipos sincronizados (`joint`). Roadmap
+inmediato: estrategia consciente de recarga (anticipar el repostaje), equipos
+que además requieren especialistas mixtos, y animación continua en el dashboard.
 
 ## Licencia
 

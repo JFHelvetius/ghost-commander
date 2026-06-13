@@ -93,6 +93,7 @@ class Task:
             "assigned": sorted(self.assigned),
             "deadline_tick": self.deadline_tick,
             "required_skill": self.required_skill,
+            "required_agents": self.required_agents,
         }
 
 

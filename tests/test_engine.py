@@ -153,3 +153,40 @@ def test_no_bases_means_no_recharging() -> None:
     assert sim.world.bases == []
     assert rec.final_metrics["recharges"] == 0
     assert not any(e["type"] == str(EventType.AGENT_RECHARGING) for e in rec.events)
+
+
+def test_cooperative_task_needs_the_full_team_present() -> None:
+    from ghost_commander.domain import Agent, AgentStatus, Task, World
+
+    sim = Simulation(Scenario(seed=1, n_agents=1, n_tasks=1), "global")
+    # hand-build a controlled world: one 2-agent task, agents co-located on it
+    world = World(width=10, height=10)
+    world.add_task(Task(id=0, x=0.0, y=0.0, required_agents=2, workload=5.0))
+    world.add_agent(Agent(id=0, x=0.0, y=0.0, capacity=1.0, task_id=0))
+    world.add_agent(Agent(id=1, x=9.0, y=9.0, speed=0.0, capacity=1.0, task_id=0))
+    world.tasks[0].assigned = {0, 1}
+    sim.world = world
+
+    # only agent 0 is on-site (agent 1 cannot move, speed 0) -> team incomplete
+    sim._advance_agents(1)
+    assert world.tasks[0].remaining == 5.0  # no progress without the full team
+    assert world.agents[0].status is AgentStatus.WORKING  # present but waiting
+
+    # bring the team together: agent 1 teleported on-site -> progress resumes
+    world.agents[1].x, world.agents[1].y = 0.0, 0.0
+    sim._advance_agents(2)
+    assert world.tasks[0].remaining == 3.0  # both contributed 1.0 each
+
+
+def test_joint_preset_has_team_tasks_and_differentiates() -> None:
+    sim = Simulation(PRESETS["joint"], "global")
+    sim.run()
+    assert any(t.required_agents > 1 for t in sim.world.tasks.values())
+    greedy = run_scenario(PRESETS["joint"], "greedy").final_metrics["mission_completion"]
+    glob = run_scenario(PRESETS["joint"], "global").final_metrics["mission_completion"]
+    assert glob >= greedy
+
+
+def test_default_scenario_is_all_single_agent() -> None:
+    sim = Simulation(Scenario(seed=2, n_agents=20, n_tasks=20), "global")
+    assert all(t.required_agents == 1 for t in sim.world.tasks.values())

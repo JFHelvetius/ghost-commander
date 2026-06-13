@@ -76,6 +76,7 @@ def _map_figure(frame: dict, width: float, height: float) -> go.Figure:
             text=[f"task {t['id']} · prio {t['priority']} · {t['status']} · "
                   f"{int(t['progress']*100)}%"
                   + (f" · req:{t['required_skill']}" if t.get("required_skill") else "")
+                  + (f" · team:{t['required_agents']}" if t.get("required_agents", 1) > 1 else "")
                   for t in sel],
             hoverinfo="text",
         ))

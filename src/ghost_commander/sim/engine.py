@@ -147,6 +147,7 @@ class Simulation:
                 )
 
     def _advance_agents(self, tick: int) -> None:
+        # Phase 1: move every assigned agent toward its task; mark who is on-site.
         for agent in self.world.alive_agents():
             if agent.task_id is None:
                 continue
@@ -155,15 +156,28 @@ class Simulation:
                 self.world.unassign_agent(agent)
                 continue
             arrived = agent.move_toward(task.x, task.y)
-            if not arrived:
-                agent.status = AgentStatus.MOVING
+            agent.status = AgentStatus.WORKING if arrived else AgentStatus.MOVING
+
+        # Phase 2: apply work per task. A cooperative task (required_agents > 1)
+        # only progresses once the *whole team* is on-site — agents that arrive
+        # early wait (WORKING, but no progress), which is the synchronization
+        # cost the commander must manage. Single-agent tasks behave exactly as
+        # before, so existing scenarios are byte-identical.
+        for task in list(self.world.tasks.values()):
+            if not task.open:
                 continue
-            # at the task: work it down
-            agent.status = AgentStatus.WORKING
+            present = [
+                self.world.agents[aid]
+                for aid in sorted(task.assigned)
+                if self.world.agents[aid].status is AgentStatus.WORKING
+            ]
+            if len(present) < task.required_agents:
+                continue  # team incomplete -> no progress this tick
             if task.status is TaskStatus.ASSIGNED:
                 task.status = TaskStatus.IN_PROGRESS
-            task.remaining -= agent.capacity
-            agent.work_done += agent.capacity
+            for agent in present:
+                task.remaining -= agent.capacity
+                agent.work_done += agent.capacity
             if task.remaining <= 0.0:
                 self._complete_task(task, tick)
 

@@ -74,6 +74,12 @@ class Scenario:
     agent_skill_weights: tuple[float, ...] = ()
     task_skill_weights: tuple[float, ...] = ()
 
+    # cooperative tasks (opt-in): a fraction of tasks need a *team* of
+    # ``cooperative_agents`` present simultaneously to make progress. 0 = none
+    # (no extra RNG draw -> existing scenario digests unchanged).
+    cooperative_fraction: float = 0.0
+    cooperative_agents: int = 2
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -132,17 +138,23 @@ class Scenario:
         workload = rng.uniform(self.task_min_workload, self.task_max_workload)
         offset = self._deadline_offset(workload)
         required_skill = self._draw_task_skill(rng)
+        required_agents = self._draw_team_size(rng)
         return Task(
             id=task_id,
             x=x,
             y=y,
             priority=priority,
             workload=workload,
-            required_agents=1,
+            required_agents=required_agents,
             created_tick=created_tick,
             deadline_tick=None if offset is None else created_tick + offset,
             required_skill=required_skill,
         )
+
+    def _draw_team_size(self, rng: RandomSource) -> int:
+        if self.cooperative_fraction <= 0:
+            return 1
+        return self.cooperative_agents if rng.chance(self.cooperative_fraction) else 1
 
     def _draw_agent_skill(self, rng: RandomSource) -> frozenset[str]:
         if not self.agent_skills:
@@ -284,6 +296,25 @@ PRESETS: dict[str, Scenario] = {
         n_bases=4,
         recharge_threshold=0.3,
         recharge_rate=0.2,
+    ),
+    # Joint: ~40% of tasks need a *team* of 2 on-site at once. Now the commander
+    # must synchronize arrivals, not just route singletons — an agent that
+    # arrives early waits (and drains), and a cooperative task stalls if one of
+    # its team is lost. Coordination *between* agents, not just assignment.
+    "joint": Scenario(
+        name="joint",
+        seed=42,
+        n_agents=70,
+        n_tasks=50,
+        max_ticks=300,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=22,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=4.0,
+        deadline_slack_base=18,
+        cooperative_fraction=0.4,
+        cooperative_agents=2,
     ),
 }
 
