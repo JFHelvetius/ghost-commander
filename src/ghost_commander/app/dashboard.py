@@ -287,7 +287,8 @@ def main() -> None:
 
 def _intro() -> None:
     """Explain what the demo is and how to read it — for first-time visitors."""
-    with st.expander("¿Qué estoy viendo? — cómo leer el dashboard", expanded=False):
+    with st.expander("👋 ¿Qué es esto y cómo se usa? (léelo si es tu primera vez)",
+                     expanded=True):
         st.markdown(
             """
 **El problema.** Cientos de agentes autónomos (drones, vehículos, robots) deben
@@ -316,41 +317,108 @@ la diferencia que ves es pura coordinación.
         )
 
 
+def _shock_kills(rec: RunRecording, shock_tick: int) -> int:
+    hist = {int(h["tick"]): int(h["agents_alive"]) for h in rec.metrics_history}
+    if not hist:
+        return 0
+    before = hist.get(shock_tick - 1, hist.get(shock_tick, 0))
+    after = hist.get(shock_tick + 2, hist.get(shock_tick + 1, before))
+    return max(0, before - after)
+
+
+def _narrative(rec: RunRecording, scenario: Scenario) -> tuple[str, str]:
+    """Plain-language story of what happened this mission — returns (level, text)."""
+    init = rec.frames[0]["metrics"]
+    m = rec.final_metrics
+    n_agents = int(m["agents_total"])
+    init_tasks, final_tasks = int(init["tasks_total"]), int(m["tasks_total"])
+    done, failed = int(m["tasks_done"]), int(m.get("tasks_failed", 0))
+    pct = m["mission_completion"] * 100
+    lost = n_agents - int(m["agents_alive"])
+
+    p = [f"Una flota de **{n_agents} agentes** (unidades autónomas) salió a completar "
+         f"**{init_tasks} tareas** repartidas por el mapa."]
+    if final_tasks > init_tasks:
+        p.append(f"Sobre la marcha llegaron **{final_tasks - init_tasks} tareas nuevas** "
+                 f"(el entorno cambia), hasta **{final_tasks}** en total.")
+    if scenario.shock_tick is not None and (k := _shock_kills(rec, scenario.shock_tick)) > 0:
+        p.append(f"En el **tick {scenario.shock_tick}** una **onda de choque** destruyó "
+                 f"**{k} agentes** de golpe.")
+    if lost > 0:
+        p.append(f"En total se perdieron **{lost} de {n_agents} agentes** "
+                 f"(**{lost / n_agents * 100:.0f}%** de la flota).")
+    if int(m.get("recharges", 0)) > 0:
+        p.append(f"Las bases de recarga permitieron **{int(m['recharges'])} repostajes** "
+                 f"para sostener la flota.")
+    if failed == 0 and done == final_tasks:
+        if lost > 0 or final_tasks > init_tasks:
+            p.append(f"Aun así, el comandante reasignó las tareas huérfanas a las "
+                     f"supervivientes y la flota **completó las {done} tareas (100%)**. "
+                     f"Eso es coordinación.")
+        else:
+            p.append(f"El comandante coordinó la flota sin incidencias y **completó las "
+                     f"{done} tareas (100%)**.")
+        return "success", " ".join(p)
+    p.append(f"El comandante salvó **{done} de {final_tasks} tareas** "
+             f"(**{pct:.0f}%**, ponderado por prioridad)"
+             + (f"; **{failed} no llegaron a tiempo**." if failed else "."))
+    return "warning", " ".join(p)
+
+
 def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
-    st.caption(st.session_state.get("rec_label", ""))
+    st.caption("Resultado de: " + st.session_state.get("rec_label", ""))
+
+    level, story = _narrative(rec, scenario)
+    (st.success if level == "success" else st.warning)("🛰 " + story)
+
     n_frames = len(rec.frames)
-    tick = st.slider("Replay (tick) — arrastra para ver cómo se reorganiza la flota",
-                     0, n_frames - 1, n_frames - 1)
+    tick = st.slider(
+        "◀ Rebobina la misión: arrastra para ver, paso a paso, cómo la flota se "
+        "reorganiza tras la onda de choque (0 = inicio, derecha = final)",
+        0, n_frames - 1, n_frames - 1,
+    )
     frame = rec.frames[tick]
     m = frame["metrics"]
 
     failed = int(m.get("tasks_failed", 0))
     recharging = int(m.get("agents_recharging", 0))
     cols = st.columns(6)
-    cols[0].metric("Misión (ponderada)", f"{m['mission_completion'] * 100:.0f}%")
-    cols[1].metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}")
+    cols[0].metric("Misión completada", f"{m['mission_completion'] * 100:.0f}%",
+                   help="Porcentaje de tareas completadas, ponderado por prioridad "
+                        "(las urgentes pesan más).")
+    cols[1].metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}",
+                   help="Tareas completadas sobre el total que existe en este momento.")
     cols[2].metric("Tareas falladas", failed,
-                   delta=None if failed == 0 else f"-{failed}", delta_color="inverse")
+                   delta=None if failed == 0 else f"-{failed}", delta_color="inverse",
+                   help="Tareas que no se completaron a tiempo (deadline perdido).")
     cols[3].metric("Agentes vivos", f"{m['agents_alive']}/{m['agents_total']}",
-                   delta=f"-{m['agents_total'] - m['agents_alive']}")
-    cols[4].metric("Reasignaciones", int(m["reassignments"]))
+                   delta=f"-{m['agents_total'] - m['agents_alive']}",
+                   help="Unidades que siguen operativas (las demás se perdieron).")
+    cols[4].metric("Reasignaciones", int(m["reassignments"]),
+                   help="Veces que el comandante movió una tarea a otra unidad tras "
+                        "perder a la asignada. Es la 'reorganización' en acción.")
     cols[5].metric("Recargando" if recharging else "Recursos medios",
-                   recharging if recharging else f"{m['mean_resources'] * 100:.0f}%")
+                   recharging if recharging else f"{m['mean_resources'] * 100:.0f}%",
+                   help="Unidades repostando ahora mismo." if recharging
+                        else "Nivel medio de recursos (batería/combustible) de la flota.")
 
     left, right = st.columns([3, 2])
     with left:
         st.plotly_chart(
             _map_figure(frame, _world_w(rec), _world_h(rec),
-                        title=f"Mapa · tick {tick}/{n_frames - 1}"),
+                        title=f"Mapa de la misión · paso {tick} de {n_frames - 1}"),
             use_container_width=True,
         )
+        st.caption("🟩 trabajando · 🟦 en ruta · ⬜ libre · 🟪 recargando — "
+                   "🟧 tarea pendiente · ▫️ tarea hecha · ✖️ tarea fallada · 🔷 base")
     with right:
-        st.markdown("**Progreso de la misión**")
+        st.markdown("**Progreso a lo largo del tiempo**")
         st.plotly_chart(
             _progress_figure(rec, tick, scenario.shock_tick),
             use_container_width=True,
         )
-        st.caption("🟩 tareas · 🟦 en ruta · 🟪 recargando · ✕ falladas · ◆ bases")
+        st.caption("La línea verde es el % de misión; la azul, la flota viva. "
+                   "La raya roja marca la onda de choque.")
 
     with st.expander("Timeline de eventos (hasta el tick seleccionado)", expanded=False):
         ev = pd.DataFrame([e for e in rec.events if e["tick"] <= tick])
@@ -363,11 +431,17 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
 
 def _render_compare(scenario: Scenario) -> None:
     st.markdown(
-        f"Mismo escenario y seed (**{scenario.name}**, seed {scenario.seed}, "
-        f"{scenario.n_agents} agentes), **solo cambia el algoritmo**. Al ser "
-        "determinista, la comparación es justa: la diferencia es la estrategia."
+        "**¿La forma de repartir el trabajo cambia el resultado?** Aquí corremos la "
+        f"**misma misión** (escenario **{scenario.name}**, {scenario.n_agents} agentes) "
+        "con cada una de las 4 estrategias de coordinación y comparamos cuánto salva "
+        "cada una. Como todo es determinista, lo único que cambia es el algoritmo — "
+        "así que la diferencia es justa.\n\n"
+        "- **greedy**: cada unidad va a la tarea buena más cercana (decisión local).\n"
+        "- **auction / global**: reparten mirando a toda la flota a la vez.\n"
+        "- **triage**: además mira los *plazos* y no malgasta unidades en tareas que "
+        "ya no llegan a tiempo."
     )
-    if not st.button(f"Comparar las {len(STRATEGIES)} estrategias",
+    if not st.button(f"▶ Comparar las {len(STRATEGIES)} estrategias",
                      type="primary", use_container_width=True):
         return
     with st.spinner("Corriendo " + " / ".join(STRATEGIES) + "…"):
