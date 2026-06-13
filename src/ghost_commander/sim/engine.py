@@ -50,6 +50,9 @@ class Simulation:
         self.log = EventLog()
         self.log.attach(self.bus)
         self.world: World = scenario.build_world(self.root)
+        # tasks that arrive *during* the mission (sorted by spawn tick)
+        self._arrivals = scenario.schedule_arrivals(self.root)
+        self._next_arrival = 0
         self.failures = FailureModel(scenario, self.root)
 
         self._record = record
@@ -94,6 +97,7 @@ class Simulation:
     def step(self) -> None:
         tick = self.clock.advance()
         self.world.tick = tick
+        self._spawn_arrivals(tick)
         self._reassign(tick)
         self._advance_agents(tick)
         self._apply_failures(tick)
@@ -177,6 +181,27 @@ class Simulation:
             freed_agents=freed,
         )
 
+    def _spawn_arrivals(self, tick: int) -> None:
+        """Inject any tasks whose spawn tick has arrived — a changing world."""
+        while self._next_arrival < len(self._arrivals):
+            task = self._arrivals[self._next_arrival]
+            if task.created_tick > tick:
+                break
+            self.world.add_task(task)
+            self._next_arrival += 1
+            self.bus.emit(
+                EventType.TASK_CREATED,
+                source="environment",
+                sim_tick=tick,
+                task=task.id,
+                priority=int(task.priority),
+                deadline=task.deadline_tick,
+            )
+
+    @property
+    def _arrivals_pending(self) -> bool:
+        return self._next_arrival < len(self._arrivals)
+
     def _expire_overdue(self, tick: int) -> None:
         """Fail any open task whose deadline has passed — a mission loss."""
         for task in self.world.tasks.values():
@@ -242,7 +267,9 @@ class Simulation:
             self.recording.add_frame(self.clock.tick, self.world, metrics)
 
     def _settled(self) -> bool:
-        """No task is open anymore — every task is either DONE or FAILED."""
+        """Mission over: no open tasks left AND no more tasks will arrive."""
+        if self._arrivals_pending:
+            return False
         return not any(t.open for t in self.world.tasks.values())
 
     def _all_done(self) -> bool:

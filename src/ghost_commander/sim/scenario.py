@@ -38,6 +38,13 @@ class Scenario:
     deadline_slack_factor: float = 0.0
     deadline_slack_base: int = 0
 
+    # dynamic task arrival: tasks that appear *during* the mission (a changing
+    # environment). ``dynamic_tasks`` extra tasks arrive at spawn ticks drawn
+    # uniformly in [arrival_start_tick, arrival_end_tick]. 0 = static world.
+    dynamic_tasks: int = 0
+    arrival_start_tick: int = 5
+    arrival_end_tick: int = 80
+
     # failure model (per agent, per tick)
     resource_drain_working: float = 0.012  # baseline drain while working
     resource_drain_moving: float = 0.004
@@ -68,26 +75,47 @@ class Scenario:
             )
 
         for j in range(self.n_tasks):
-            # Preserve draw order x, y, priority, workload so the scenario
-            # realization stays stable as fields are added.
-            x = rng.uniform(0, self.width)
-            y = rng.uniform(0, self.height)
-            priority = self._draw_priority(rng)
-            workload = rng.uniform(self.task_min_workload, self.task_max_workload)
-            world.add_task(
-                Task(
-                    id=j,
-                    x=x,
-                    y=y,
-                    priority=priority,
-                    workload=workload,
-                    required_agents=1,
-                    deadline_tick=self._deadline_for(workload),
-                )
-            )
+            world.add_task(self._make_task(j, rng, created_tick=0))
         return world
 
-    def _deadline_for(self, workload: float) -> int | None:
+    def schedule_arrivals(self, root: RandomSource) -> list[Task]:
+        """Tasks that arrive during the mission, sorted by spawn tick.
+
+        Drawn from a dedicated ``arrivals`` stream so turning arrivals on does
+        not perturb the initial layout or the failure sequence. With
+        ``dynamic_tasks == 0`` this draws nothing -> existing scenarios keep
+        their exact digests.
+        """
+        if self.dynamic_tasks <= 0:
+            return []
+        rng = root.child("arrivals")
+        arrivals: list[Task] = []
+        for k in range(self.dynamic_tasks):
+            spawn = rng.integers(self.arrival_start_tick, self.arrival_end_tick + 1)
+            arrivals.append(self._make_task(self.n_tasks + k, rng, created_tick=spawn))
+        arrivals.sort(key=lambda t: (t.created_tick, t.id))
+        return arrivals
+
+    def _make_task(self, task_id: int, rng: RandomSource, created_tick: int) -> Task:
+        # Preserve draw order x, y, priority, workload so the scenario
+        # realization stays stable as fields are added.
+        x = rng.uniform(0, self.width)
+        y = rng.uniform(0, self.height)
+        priority = self._draw_priority(rng)
+        workload = rng.uniform(self.task_min_workload, self.task_max_workload)
+        offset = self._deadline_offset(workload)
+        return Task(
+            id=task_id,
+            x=x,
+            y=y,
+            priority=priority,
+            workload=workload,
+            required_agents=1,
+            created_tick=created_tick,
+            deadline_tick=None if offset is None else created_tick + offset,
+        )
+
+    def _deadline_offset(self, workload: float) -> int | None:
         if self.deadline_slack_factor <= 0:
             return None
         import math
@@ -147,6 +175,26 @@ PRESETS: dict[str, Scenario] = {
         shock_failure_rate=0.30,
         deadline_slack_factor=2.5,
         deadline_slack_base=8,
+    ),
+    # Streaming: a *changing environment*. Only a third of the work exists at
+    # t=0; the rest arrives in waves during the mission, each new task with its
+    # own deadline. The commander can never plan once — it must keep
+    # reorganizing as the objective set shifts under it.
+    "streaming": Scenario(
+        name="streaming",
+        seed=42,
+        n_agents=60,
+        n_tasks=20,
+        dynamic_tasks=60,
+        arrival_start_tick=5,
+        arrival_end_tick=120,
+        max_ticks=320,
+        agent_speed=2.8,
+        random_failure_rate=0.003,
+        shock_tick=40,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.0,
+        deadline_slack_base=12,
     ),
 }
 

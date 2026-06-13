@@ -83,3 +83,22 @@ def test_triage_without_deadlines_matches_global() -> None:
     # With deadlines off, triage's score reduces to global's -> identical run.
     sc = Scenario(seed=8, n_agents=60, n_tasks=25, shock_tick=10)
     assert run_scenario(sc, "triage").digest() == run_scenario(sc, "global").digest()
+
+
+def test_dynamic_tasks_arrive_during_mission() -> None:
+    sc = Scenario(seed=4, n_agents=60, n_tasks=10, dynamic_tasks=20,
+                  arrival_start_tick=3, arrival_end_tick=40, max_ticks=400)
+    rec = run_scenario(sc, "global")
+    # the world grows from 10 to 30 tasks as objectives stream in
+    assert rec.frames[0]["metrics"]["tasks_total"] == 10
+    assert rec.final_metrics["tasks_total"] == 30
+    created = [e for e in rec.events if e["type"] == str(EventType.TASK_CREATED)]
+    assert len(created) == 20
+    assert all(e["tick"] >= 3 for e in created)
+
+
+def test_static_scenario_has_no_arrivals() -> None:
+    sc = Scenario(seed=4, n_agents=40, n_tasks=15)  # dynamic_tasks defaults to 0
+    rec = run_scenario(sc, "global")
+    assert rec.final_metrics["tasks_total"] == 15
+    assert not any(e["type"] == str(EventType.TASK_CREATED) for e in rec.events)

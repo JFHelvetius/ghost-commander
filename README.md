@@ -72,8 +72,9 @@ ghost-commander compare --preset scarce              # ranking de estrategias
 
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
-*perder*), `rush` (plazos muy ajustados, escaparate del triage). Estrategias:
-`greedy`, `auction`, `global`, `triage` (deadline-aware).
+*perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`
+(entorno cambiante: tareas que llegan en oleadas). Estrategias: `greedy`,
+`auction`, `global`, `triage` (deadline-aware).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -122,6 +123,28 @@ rank strategy  mission   done     failed  ticks   lost   reassign
 el ganador medio cuando los deadlines son ajustados; con deadlines desactivados
 produce exactamente la misma misión que `global` (mismo digest determinista).
 
+### Entornos cambiantes: tareas que llegan durante la misión
+
+El comandante no siempre conoce todos los objetivos de antemano. El preset
+`streaming` arranca con solo 20 tareas y deja que **otras 60 lleguen en oleadas**
+durante la misión, cada una con su propio deadline. El mundo crece de 20 a 80
+tareas mientras los agentes ya están en movimiento: no se puede planificar una
+vez, hay que **reorganizarse continuamente**.
+
+```
+ghost-commander compare --preset streaming
+rank strategy  mission   done     failed  ticks   lost   reassign
+------------------------------------------------------------------
+1    triage    100.0%    80/80    0       178     39     12
+2    auction   100.0%    80/80    0       181     42     15
+3    global    100.0%    80/80    0       181     42     15
+4    greedy    76.2%     62/80    18      204     54     33
+```
+
+Las estrategias coordinadas absorben las oleadas y completan; `greedy` no sigue
+el ritmo y pierde 18 tareas. `triage` es además la más **eficiente** (12
+reasignaciones y 39 agentes perdidos, frente a 33/54 de greedy).
+
 ---
 
 ## Qué hay dentro
@@ -141,14 +164,16 @@ src/ghost_commander/
 
 ### El motor por tick
 
-1. **Reasigna** los agentes libres a las tareas que necesitan dotación, usando
+1. **Inyecta** las tareas que llegan en este tick (entorno cambiante).
+2. **Reasigna** los agentes libres a las tareas que necesitan dotación, usando
    la estrategia activa.
-2. **Mueve** cada agente hacia su tarea y la **trabaja** cuando llega.
-3. **Aplica fallos**: desgaste de recursos, pérdidas aleatorias y ondas de
+3. **Mueve** cada agente hacia su tarea y la **trabaja** cuando llega.
+4. **Aplica fallos**: desgaste de recursos, pérdidas aleatorias y ondas de
    choque coordinadas.
-4. **Desvincula** a los agentes perdidos → sus tareas vuelven al pool y se
-   re-dotan en el siguiente tick (el "reorganizarse solo" que se ve en pantalla).
-5. **Registra** métricas y un frame para el replay.
+5. **Expira** las tareas cuyo deadline venció (pérdida de misión) y **desvincula**
+   a los agentes perdidos → sus tareas vuelven al pool y se re-dotan en el
+   siguiente tick (el "reorganizarse solo" que se ve en pantalla).
+6. **Registra** métricas y un frame para el replay.
 
 ### Determinismo y replay
 
@@ -185,10 +210,11 @@ pytest -q     # 19 tests: determinismo, validez de asignaciones, integración de
 ## Estado
 
 MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
-misiones se pueden *perder*) y una estrategia **deadline-aware (`triage`)** que
-gana cuando los plazos aprietan (preset `rush`). Roadmap inmediato: capacidades
-heterogéneas de agentes, tareas que llegan durante la misión (no solo al inicio),
-y animación continua en el dashboard.
+misiones se pueden *perder*), una estrategia **deadline-aware (`triage`)** que
+gana cuando los plazos aprietan (`rush`), y **entornos cambiantes** con tareas
+que llegan durante la misión (`streaming`). Roadmap inmediato: capacidades
+heterogéneas de agentes (especialización), agentes que recargan/reparan, y
+animación continua en el dashboard.
 
 ## Licencia
 
