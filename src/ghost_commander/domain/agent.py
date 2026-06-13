@@ -11,6 +11,7 @@ class AgentStatus(StrEnum):
     IDLE = "idle"  # alive, no task
     MOVING = "moving"  # en route to assigned task
     WORKING = "working"  # at task location, doing work
+    RECHARGING = "recharging"  # pulled off duty to refuel at a base
     FAILED = "failed"  # lost (resource depletion or random failure)
 
 
@@ -54,8 +55,8 @@ class Agent:
 
     @property
     def available(self) -> bool:
-        """Alive and free to take a new assignment."""
-        return self.alive and self.task_id is None
+        """Alive, idle, and free to take a new assignment (not refueling)."""
+        return self.alive and self.task_id is None and self.status is AgentStatus.IDLE
 
     def distance_to(self, x: float, y: float) -> float:
         return math.hypot(self.x - x, self.y - y)

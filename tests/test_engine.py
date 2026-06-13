@@ -130,3 +130,26 @@ def test_homogeneous_fleet_has_no_skill_requirements() -> None:
     sim = Simulation(Scenario(seed=1, n_agents=20, n_tasks=10), "global")
     assert all(not a.skills for a in sim.world.agents.values())
     assert all(t.required_skill is None for t in sim.world.tasks.values())
+
+
+def test_recovery_sustains_the_fleet() -> None:
+    # Same attritional mission with and without bases: recovery should keep far
+    # more of the fleet alive and finish far more of the mission.
+    import dataclasses
+
+    base = PRESETS["endurance"]
+    with_bases = run_scenario(base, "triage").final_metrics
+    no_bases = run_scenario(dataclasses.replace(base, n_bases=0), "triage").final_metrics
+
+    assert with_bases["recharges"] > 0
+    assert no_bases["recharges"] == 0
+    assert with_bases["agents_alive"] > no_bases["agents_alive"]
+    assert with_bases["mission_completion"] > no_bases["mission_completion"] + 0.2
+
+
+def test_no_bases_means_no_recharging() -> None:
+    sim = Simulation(Scenario(seed=1, n_agents=30, n_tasks=15, resource_drain_working=0.05), "global")
+    rec = sim.run()
+    assert sim.world.bases == []
+    assert rec.final_metrics["recharges"] == 0
+    assert not any(e["type"] == str(EventType.AGENT_RECHARGING) for e in rec.events)

@@ -45,6 +45,15 @@ class Scenario:
     arrival_start_tick: int = 5
     arrival_end_tick: int = 80
 
+    # recovery: agents at or below recharge_threshold are pulled off duty and
+    # routed to the nearest base, regaining recharge_rate per tick until they
+    # reach recharge_target, then return to the pool. n_bases == 0 disables it
+    # (no extra RNG draws -> existing scenario digests unchanged).
+    n_bases: int = 0
+    recharge_threshold: float = 0.25
+    recharge_rate: float = 0.15
+    recharge_target: float = 1.0
+
     # failure model (per agent, per tick)
     resource_drain_working: float = 0.012  # baseline drain while working
     resource_drain_moving: float = 0.004
@@ -89,6 +98,11 @@ class Scenario:
 
         for j in range(self.n_tasks):
             world.add_task(self._make_task(j, rng, created_tick=0))
+
+        # Bases drawn last so adding them never perturbs agent/task layout; only
+        # drawn when enabled, so n_bases == 0 keeps existing digests intact.
+        for _ in range(self.n_bases):
+            world.bases.append((rng.uniform(0, self.width), rng.uniform(0, self.height)))
         return world
 
     def schedule_arrivals(self, root: RandomSource) -> list[Task]:
@@ -251,6 +265,25 @@ PRESETS: dict[str, Scenario] = {
         agent_skills=("recon", "repair", "medical"),
         agent_skill_weights=(0.5, 0.2, 0.3),   # repair is scarce
         task_skill_weights=(0.34, 0.33, 0.33),  # repair demand ~ even -> oversubscribed
+    ),
+    # Endurance: a long attritional mission with heavy resource drain. Without
+    # bases the fleet burns out before clearing the field and the mission stalls
+    # well under 100%; with recharge bases the commander keeps cycling agents
+    # through refuel and sustains the fleet to finish. Recovery as a real lever.
+    "endurance": Scenario(
+        name="endurance",
+        seed=42,
+        n_agents=40,
+        n_tasks=70,
+        max_ticks=400,
+        agent_speed=2.8,
+        resource_drain_working=0.04,
+        resource_drain_moving=0.015,
+        random_failure_rate=0.004,
+        shock_tick=None,
+        n_bases=4,
+        recharge_threshold=0.3,
+        recharge_rate=0.2,
     ),
 }
 

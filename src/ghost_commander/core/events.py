@@ -44,6 +44,7 @@ class EventType(StrEnum):
     TASK_FAILED = "task.failed"
     # agents
     AGENT_RESOURCE_LOW = "agent.resource_low"
+    AGENT_RECHARGING = "agent.recharging"
     AGENT_FAILED = "agent.failed"
     AGENT_RECOVERED = "agent.recovered"
     # mission

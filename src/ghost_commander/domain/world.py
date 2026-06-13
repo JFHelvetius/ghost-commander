@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from .agent import Agent, AgentStatus
@@ -16,9 +17,16 @@ class World:
     height: float
     agents: dict[int, Agent] = field(default_factory=dict)
     tasks: dict[int, Task] = field(default_factory=dict)
+    # recharge depots; agents low on resources refuel here. Empty = no recovery.
+    bases: list[tuple[float, float]] = field(default_factory=list)
     # current simulation tick — part of the state, so deadline-aware strategies
     # can reason about urgency without changing the pure assign(world) interface.
     tick: int = 0
+
+    def nearest_base(self, x: float, y: float) -> tuple[float, float] | None:
+        if not self.bases:
+            return None
+        return min(self.bases, key=lambda b: math.hypot(b[0] - x, b[1] - y))
 
     # ------------------------------------------------------------------ adds
     def add_agent(self, agent: Agent) -> None:
@@ -74,6 +82,7 @@ class World:
         return {
             "agents": [a.snapshot() for a in self.agents.values()],
             "tasks": [t.snapshot() for t in self.tasks.values()],
+            "bases": [[round(x, 3), round(y, 3)] for x, y in self.bases],
         }
 
 

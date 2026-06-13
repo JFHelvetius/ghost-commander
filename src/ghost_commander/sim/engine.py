@@ -61,6 +61,7 @@ class Simulation:
             self.bus.subscribe_all(self.recording.add_event)
 
         self.reassignments = 0
+        self._recharges = 0
         self._disrupted: set[int] = set()
         self._low_warned: set[int] = set()
         self._finished = False
@@ -98,6 +99,7 @@ class Simulation:
         tick = self.clock.advance()
         self.world.tick = tick
         self._spawn_arrivals(tick)
+        self._manage_recharge(tick)
         self._reassign(tick)
         self._advance_agents(tick)
         self._apply_failures(tick)
@@ -185,6 +187,46 @@ class Simulation:
             freed_agents=freed,
         )
 
+    def _manage_recharge(self, tick: int) -> None:
+        """Route depleted agents to bases and refuel those already there.
+
+        A low agent is pulled off its task (freeing it for reassignment), heads
+        to the nearest base, regains resources, and rejoins the pool — turning
+        attrition into a logistics problem the commander can manage. No-op when
+        the scenario has no bases.
+        """
+        if not self.world.bases:
+            return
+        sc = self.scenario
+        for agent in self.world.alive_agents():
+            if agent.status is AgentStatus.RECHARGING:
+                base = self.world.nearest_base(agent.x, agent.y)
+                assert base is not None  # bases is non-empty here
+                if agent.move_toward(*base):
+                    agent.resources = min(sc.recharge_target, agent.resources + sc.recharge_rate)
+                    if agent.resources >= sc.recharge_target:
+                        agent.status = AgentStatus.IDLE
+                        self.bus.emit(
+                            EventType.AGENT_RECOVERED,
+                            source="logistics",
+                            sim_tick=tick,
+                            agent=agent.id,
+                        )
+            elif agent.resources <= sc.recharge_threshold:
+                task = self.world.task_of(agent)
+                if task is not None and task.open:
+                    self._disrupted.add(task.id)
+                self.world.unassign_agent(agent)  # -> IDLE
+                agent.status = AgentStatus.RECHARGING
+                self._recharges += 1
+                self.bus.emit(
+                    EventType.AGENT_RECHARGING,
+                    source="logistics",
+                    sim_tick=tick,
+                    agent=agent.id,
+                    resources=round(agent.resources, 3),
+                )
+
     def _spawn_arrivals(self, tick: int) -> None:
         """Inject any tasks whose spawn tick has arrived — a changing world."""
         while self._next_arrival < len(self._arrivals):
@@ -266,7 +308,9 @@ class Simulation:
 
     # ------------------------------------------------------------- helpers
     def _snapshot(self) -> None:
-        metrics = compute_metrics(self.world, self.clock.tick, self.reassignments)
+        metrics = compute_metrics(
+            self.world, self.clock.tick, self.reassignments, self._recharges
+        )
         if self._record:
             self.recording.add_frame(self.clock.tick, self.world, metrics)
 

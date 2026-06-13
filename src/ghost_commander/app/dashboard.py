@@ -24,6 +24,7 @@ _STATUS_COLOR = {
     "idle": "#7f8c9b",
     "moving": "#3aa0ff",
     "working": "#27d17c",
+    "recharging": "#b06cff",
     "failed": "#e0484f",
 }
 _PRIORITY_SIZE = {1: 9, 2: 12, 3: 15, 4: 19, 5: 24}
@@ -36,7 +37,17 @@ def _run(scenario: Scenario, strategy: str) -> RunRecording:
 def _map_figure(frame: dict, width: float, height: float) -> go.Figure:
     agents = frame["world"]["agents"]
     tasks = frame["world"]["tasks"]
+    bases = frame["world"].get("bases", [])
     fig = go.Figure()
+
+    # recharge bases: cyan diamonds
+    if bases:
+        fig.add_trace(go.Scatter(
+            x=[b[0] for b in bases], y=[b[1] for b in bases], mode="markers",
+            name="bases", marker=dict(symbol="diamond", size=16, color="#19c3d6",
+                                      line=dict(width=1, color="#bdf3fa")),
+            text=[f"base {i}" for i in range(len(bases))], hoverinfo="text",
+        ))
 
     # tasks: size by priority. open = amber square, done = dim outline,
     # failed = red X (a deadline lost — the thing coordination is fighting).

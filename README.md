@@ -74,8 +74,8 @@ Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 *perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`
 (entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
-heterogénea con un especialista escaso). Estrategias: `greedy`, `auction`,
-`global`, `triage` (deadline-aware).
+heterogénea con un especialista escaso), `endurance` (desgaste largo con bases
+de recarga). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -171,6 +171,28 @@ el ganador **medio** across seeds (gana 4 de 6); `greedy` gestiona peor la flota
 La especialización es **opt-in**: sin `agent_skills`, la flota es homogénea y los
 escenarios anteriores conservan su digest determinista exacto.
 
+### Recuperación: bases de recarga y sostenimiento de la flota
+
+En misiones largas de desgaste, los agentes se agotan y mueren. El preset
+`endurance` añade **bases de recarga**: un agente que baja del umbral se retira
+de su tarea (que vuelve al pool), va a la base más cercana, reposta y regresa.
+La recuperación convierte la atrición en un problema de logística que el
+comandante gestiona. El valor se ve aislando la palanca — mismo escenario, misma
+estrategia, con y sin bases:
+
+```
+endurance · triage      misión    tareas    flota viva
+-----------------------------------------------------------
+sin bases               41%       21/70     0/40   (la flota se extingue)
+con 4 bases             91%       56/70     5/40   (125 viajes de recarga)
+```
+
+**La recuperación convierte una catástrofe del 41% en un 91%.** Pero no es
+gratis y el proyecto es honesto al respecto: bajo *deadlines muy ajustados*, el
+tiempo de ir a repostar puede costar más puntualidad de la que ahorra — recargar
+es una decisión con coste, no un free lunch. La recuperación es **opt-in**
+(`n_bases=0` la desactiva sin tocar los digests existentes).
+
 ---
 
 ## Qué hay dentro
@@ -238,10 +260,12 @@ pytest -q     # 19 tests: determinismo, validez de asignaciones, integración de
 MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
 misiones se pueden *perder*), una estrategia **deadline-aware (`triage`)** que
 gana cuando los plazos aprietan (`rush`), **entornos cambiantes** con tareas que
-llegan durante la misión (`streaming`), y **agentes heterogéneos** con
-especialización y cuellos de botella (`specialist`). Roadmap inmediato: agentes
-que recargan/reparan (recuperación), tareas que requieren cooperación de varios
-especialistas a la vez, y animación continua en el dashboard.
+llegan durante la misión (`streaming`), **agentes heterogéneos** con
+especialización y cuellos de botella (`specialist`), y **recuperación** con bases
+de recarga que sostienen la flota en misiones de desgaste (`endurance`). Roadmap
+inmediato: tareas que requieren cooperación de varios especialistas a la vez,
+estrategia consciente de recarga (anticipar el repostaje), y animación continua
+en el dashboard.
 
 ## Licencia
 

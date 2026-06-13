@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
-from ghost_commander.domain import TaskStatus
+from ghost_commander.domain import AgentStatus, TaskStatus
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -16,6 +16,8 @@ class MetricsSnapshot:
     tick: int
     agents_alive: int
     agents_total: int
+    agents_recharging: int
+    recharges: int
     tasks_done: int
     tasks_total: int
     tasks_failed: int
@@ -33,7 +35,9 @@ class MetricsSnapshot:
         return asdict(self)
 
 
-def compute_metrics(world: World, tick: int, reassignments: int) -> MetricsSnapshot:
+def compute_metrics(
+    world: World, tick: int, reassignments: int, recharges: int = 0
+) -> MetricsSnapshot:
     tasks = list(world.tasks.values())
     agents = list(world.agents.values())
 
@@ -53,6 +57,8 @@ def compute_metrics(world: World, tick: int, reassignments: int) -> MetricsSnaps
         tick=tick,
         agents_alive=len(alive),
         agents_total=len(agents),
+        agents_recharging=sum(1 for a in alive if a.status is AgentStatus.RECHARGING),
+        recharges=recharges,
         tasks_done=len(done),
         tasks_total=len(tasks),
         tasks_failed=len(failed),
