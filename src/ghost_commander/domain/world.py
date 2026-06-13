@@ -80,6 +80,8 @@ class World:
 
     def snapshot(self) -> dict[str, object]:
         return {
+            "width": self.width,
+            "height": self.height,
             "agents": [a.snapshot() for a in self.agents.values()],
             "tasks": [t.snapshot() for t in self.tasks.values()],
             "bases": [[round(x, 3), round(y, 3)] for x, y in self.bases],

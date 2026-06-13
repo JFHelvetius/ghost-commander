@@ -1,0 +1,7 @@
+# Runtime dependencies for the Streamlit Community Cloud deployment.
+# (The package itself is imported via src/ in streamlit_app.py, so only the
+# dashboard's runtime libraries are needed here.)
+numpy>=1.26
+streamlit>=1.35
+plotly>=5.18
+pandas>=2.0

@@ -48,6 +48,18 @@ reasignaciones: la comparación hace visible *por qué* la coordinación importa
 
 ---
 
+## Demo en vivo (Streamlit Community Cloud)
+
+El dashboard está listo para desplegar en [share.streamlit.io](https://share.streamlit.io):
+el repo incluye `streamlit_app.py` (entry point), `requirements.txt` y
+`.streamlit/config.toml` (tema oscuro). Pasos:
+
+1. Entra en share.streamlit.io con tu cuenta de GitHub.
+2. **New app** → repo `JFHelvetius/ghost-commander`, branch `main`, archivo
+   `streamlit_app.py`.
+3. Deploy. La app autoejecuta una misión al cargar, así que se ve algo de
+   inmediato.
+
 ## Instalación
 
 ```bash
