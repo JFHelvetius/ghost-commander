@@ -12,6 +12,12 @@ misión se complete a pesar de las pérdidas.
 > **"Acabo de ver 100 agentes perder un tercio de sus recursos a una onda de
 > choque y reorganizarse solos para completar la misión."**
 
+<p align="center">
+  <img src="docs/demo.gif" alt="100 agentes pierden un tercio de la flota a una onda de choque y se reorganizan para completar la misión" width="540">
+</p>
+
+<p align="center"><em>Escenario por defecto: 100 agentes, onda de choque en el tick 18 que tumba ~40, y la flota se reorganiza sola hasta completar las 55 tareas. (Generado con <code>tools/make_demo_gif.py</code> — determinista.)</em></p>
+
 ---
 
 ## Demo en 30 segundos
