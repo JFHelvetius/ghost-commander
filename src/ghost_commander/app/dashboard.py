@@ -86,71 +86,114 @@ _SCENARIO_DESC = {
 
 
 # --------------------------------------------------------------------------- map
-def _map_figure(frame: dict, width: float, height: float, title: str) -> go.Figure:
-    agents = frame["world"]["agents"]
-    tasks = frame["world"]["tasks"]
-    bases = frame["world"].get("bases", [])
-    fig = go.Figure()
+# Fixed trace order so Plotly can animate frame-to-frame (trace count is constant).
+_AGENT_ORDER = ["idle", "moving", "working", "recharging"]
 
-    if bases:
-        fig.add_trace(go.Scatter(
-            x=[b[0] for b in bases], y=[b[1] for b in bases], mode="markers",
-            name="bases", marker=dict(symbol="diamond", size=15, color="#19c3d6",
-                                      line=dict(width=1, color="#bdf3fa")),
-            text=[f"base {i}" for i in range(len(bases))], hoverinfo="text",
-        ))
+
+def _frame_scatters(frame: dict) -> list[go.Scatter]:
+    """Build the fixed list of traces for one tick (links, bases, tasks, agents)."""
+    world = frame["world"]
+    agents = world["agents"]
+    tasks = world["tasks"]
+    bases = world.get("bases", [])
+    tpos = {t["id"]: (t["x"], t["y"]) for t in tasks}
+
+    # assignment links: see the commander wiring agents to tasks (and rewiring it).
+    lx: list[float | None] = []
+    ly: list[float | None] = []
+    for a in agents:
+        if a["status"] in ("moving", "working") and a.get("task_id") in tpos:
+            tx, ty = tpos[a["task_id"]]
+            lx += [a["x"], tx, None]
+            ly += [a["y"], ty, None]
+    traces: list[go.Scatter] = [go.Scatter(
+        x=lx, y=ly, mode="lines", name="asignaciones",
+        line=dict(color="rgba(58,160,255,0.22)", width=1), hoverinfo="skip",
+        showlegend=False,
+    )]
+
+    traces.append(go.Scatter(
+        x=[b[0] for b in bases], y=[b[1] for b in bases], mode="markers", name="bases",
+        marker=dict(symbol="diamond", size=15, color="#19c3d6",
+                    line=dict(width=1, color="#bdf3fa")),
+        text=[f"base {i}" for i in range(len(bases))], hoverinfo="text",
+    ))
 
     def _bucket(t: dict) -> str:
-        if t["status"] == "done":
-            return "done"
-        if t["status"] == "failed":
-            return "failed"
-        return "open"
+        return t["status"] if t["status"] in ("done", "failed") else "open"
 
     task_styles = {
-        "open": dict(symbol="square", color="#f4b942", line="#f4b942"),
-        "done": dict(symbol="square-open", color="#34406b", line="#34406b"),
-        "failed": dict(symbol="x", color="#e0484f", line="#e0484f"),
+        "open": ("square", "#f4b942", "#f4b942"),
+        "done": ("square-open", "#33406b", "#33406b"),
+        "failed": ("x", "#e0484f", "#e0484f"),
     }
-    for bucket, style in task_styles.items():
+    for bucket, (symbol, color, line) in task_styles.items():
         sel = [t for t in tasks if _bucket(t) == bucket]
-        if not sel:
-            continue
-        fig.add_trace(go.Scatter(
+        traces.append(go.Scatter(
             x=[t["x"] for t in sel], y=[t["y"] for t in sel], mode="markers",
-            name=f"tasks · {bucket}",
-            marker=dict(symbol=style["symbol"],
-                        size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
-                        color=style["color"], line=dict(width=1, color=style["line"])),
-            text=[f"task {t['id']} · prio {t['priority']} · {t['status']} · "
-                  f"{int(t['progress']*100)}%"
-                  + (f" · req:{t['required_skill']}" if t.get("required_skill") else "")
-                  + (f" · team:{t['required_agents']}" if t.get("required_agents", 1) > 1 else "")
+            name=f"tarea · {bucket}",
+            marker=dict(symbol=symbol, size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
+                        color=color, line=dict(width=1, color=line)),
+            text=[f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
+                  + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
+                  + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else "")
                   for t in sel],
             hoverinfo="text",
         ))
 
-    for status, color in _STATUS_COLOR.items():
+    for status in _AGENT_ORDER:
         sel = [a for a in agents if a["status"] == status]
-        if not sel:
-            continue
-        fig.add_trace(go.Scatter(
+        traces.append(go.Scatter(
             x=[a["x"] for a in sel], y=[a["y"] for a in sel], mode="markers",
-            name=f"agents · {status}",
-            marker=dict(size=7, color=color, line=dict(width=0)),
-            text=[f"agent {a['id']} · {a['status']} · res {int(a['resources']*100)}%"
+            name=f"agente · {status}",
+            marker=dict(size=9 if status == "working" else 8, color=_STATUS_COLOR[status],
+                        line=dict(width=1, color="rgba(255,255,255,0.18)")),
+            text=[f"agente {a['id']} · {a['status']} · recursos {int(a['resources']*100)}%"
                   + (f" · {a['skill']}" if a.get("skill") else "") for a in sel],
             hoverinfo="text",
         ))
+    return traces
 
+
+def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.Figure:
+    """A play-able, scrubbable map: watch the fleet move, fail and reorganize."""
+    n = len(rec.frames)
+    step = max(1, n // 90)  # cap frames so the payload stays light
+    idxs = list(range(0, n, step))
+    if idxs[-1] != n - 1:
+        idxs.append(n - 1)
+
+    base = _frame_scatters(rec.frames[idxs[0]])
+    frames = [go.Frame(data=_frame_scatters(rec.frames[i]), name=str(i)) for i in idxs]
+
+    def _btn(label: str, dur: int | None) -> dict:
+        args = [None, {"frame": {"duration": dur, "redraw": True},
+                       "fromcurrent": True, "transition": {"duration": 0}}] if dur \
+            else [[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
+        return dict(label=label, method="animate", args=args)
+
+    fig = go.Figure(data=base, frames=frames)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=_FG)),
-        height=560, margin=dict(l=10, r=10, t=40, b=10),
+        height=600, margin=dict(l=8, r=8, t=8, b=8),
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
-        legend=dict(orientation="h", y=1.04, font=dict(size=10)),
+        legend=dict(orientation="h", y=1.03, font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
         xaxis=dict(range=[0, width], showgrid=False, zeroline=False, visible=False),
         yaxis=dict(range=[0, height], showgrid=False, zeroline=False, visible=False,
                    scaleanchor="x", scaleratio=1),
+        updatemenus=[dict(
+            type="buttons", direction="left", x=0.0, y=1.10, xanchor="left",
+            showactive=False, bgcolor="#161b25", bordercolor="#27d17c",
+            font=dict(color="#e6ebf3"),
+            buttons=[_btn("▶ Reproducir", 110), _btn("⏸ Pausa", None)],
+        )],
+        sliders=[dict(
+            active=len(idxs) - 1, x=0.0, len=1.0, y=-0.02, pad=dict(t=6),
+            currentvalue=dict(prefix="paso ", font=dict(color=_FG, size=12)),
+            font=dict(size=9, color="#9aa6b8"),
+            steps=[dict(method="animate", label=str(i),
+                        args=[[str(i)], {"frame": {"duration": 0, "redraw": True},
+                                         "mode": "immediate"}]) for i in idxs],
+        )],
     )
     return fig
 
@@ -371,62 +414,46 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
     level, story = _narrative(rec, scenario)
     (st.success if level == "success" else st.warning)("🛰 " + story)
 
-    n_frames = len(rec.frames)
-    tick = st.slider(
-        "◀ Rebobina la misión: arrastra para ver, paso a paso, cómo la flota se "
-        "reorganiza tras la onda de choque (0 = inicio, derecha = final)",
-        0, n_frames - 1, n_frames - 1,
-    )
-    frame = rec.frames[tick]
-    m = frame["metrics"]
-
+    m = rec.final_metrics  # the cards summarize the *outcome* of the mission
     failed = int(m.get("tasks_failed", 0))
-    recharging = int(m.get("agents_recharging", 0))
-    cols = st.columns(6)
+    cols = st.columns(5)
     cols[0].metric("Misión completada", f"{m['mission_completion'] * 100:.0f}%",
                    help="Porcentaje de tareas completadas, ponderado por prioridad "
                         "(las urgentes pesan más).")
     cols[1].metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}",
-                   help="Tareas completadas sobre el total que existe en este momento.")
+                   help="Tareas completadas sobre el total de la misión.")
     cols[2].metric("Tareas falladas", failed,
                    delta=None if failed == 0 else f"-{failed}", delta_color="inverse",
                    help="Tareas que no se completaron a tiempo (deadline perdido).")
-    cols[3].metric("Agentes vivos", f"{m['agents_alive']}/{m['agents_total']}",
-                   delta=f"-{m['agents_total'] - m['agents_alive']}",
-                   help="Unidades que siguen operativas (las demás se perdieron).")
+    cols[3].metric("Agentes perdidos", f"{m['agents_total'] - m['agents_alive']}/{m['agents_total']}",
+                   help="Unidades que se perdieron durante la misión.")
     cols[4].metric("Reasignaciones", int(m["reassignments"]),
                    help="Veces que el comandante movió una tarea a otra unidad tras "
                         "perder a la asignada. Es la 'reorganización' en acción.")
-    cols[5].metric("Recargando" if recharging else "Recursos medios",
-                   recharging if recharging else f"{m['mean_resources'] * 100:.0f}%",
-                   help="Unidades repostando ahora mismo." if recharging
-                        else "Nivel medio de recursos (batería/combustible) de la flota.")
 
+    st.markdown("##### ▶ Pulsa **Reproducir** para ver la misión en movimiento")
     left, right = st.columns([3, 2])
     with left:
         st.plotly_chart(
-            _map_figure(frame, _world_w(rec), _world_h(rec),
-                        title=f"Mapa de la misión · paso {tick} de {n_frames - 1}"),
+            _animated_map_figure(rec, _world_w(rec), _world_h(rec)),
             use_container_width=True,
         )
         st.caption("🟩 trabajando · 🟦 en ruta · ⬜ libre · 🟪 recargando — "
-                   "🟧 tarea pendiente · ▫️ tarea hecha · ✖️ tarea fallada · 🔷 base")
+                   "🟧 tarea pendiente · ▫️ tarea hecha · ✖️ tarea fallada · 🔷 base. "
+                   "Las líneas azules tenues son las asignaciones del comandante: "
+                   "míralas **recablearse** tras la onda de choque.")
     with right:
         st.markdown("**Progreso a lo largo del tiempo**")
         st.plotly_chart(
-            _progress_figure(rec, tick, scenario.shock_tick),
+            _progress_figure(rec, len(rec.frames) - 1, scenario.shock_tick),
             use_container_width=True,
         )
-        st.caption("La línea verde es el % de misión; la azul, la flota viva. "
-                   "La raya roja marca la onda de choque.")
-
-    with st.expander("Timeline de eventos (hasta el tick seleccionado)", expanded=False):
-        ev = pd.DataFrame([e for e in rec.events if e["tick"] <= tick])
-        if not ev.empty:
-            notable = ev[ev["severity"].isin(["WARN", "ERROR", "CRITICAL", "INFO"])]
-            st.dataframe(notable.tail(200), use_container_width=True, height=260)
-        else:
-            st.write("Sin eventos todavía.")
+        st.caption("Verde = % de misión · azul = flota viva · raya roja = onda de choque.")
+        with st.expander("Ver registro de eventos"):
+            ev = pd.DataFrame(rec.events)
+            if not ev.empty:
+                notable = ev[ev["severity"].isin(["WARN", "ERROR", "CRITICAL", "INFO"])]
+                st.dataframe(notable.tail(200), use_container_width=True, height=240)
 
 
 def _render_compare(scenario: Scenario) -> None:
