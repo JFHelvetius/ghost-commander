@@ -106,9 +106,16 @@ escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 *perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`
 (entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
 heterogénea con un especialista escaso), `endurance` (desgaste largo con bases
-de recarga), `joint` (tareas cooperativas que exigen equipos). Estrategias:
-`greedy`, `auction`, `global`, `triage` (deadline-aware), `optimal` (óptimo
-exacto por tick, baseline).
+de recarga), `joint` (tareas cooperativas que exigen equipos), `recon` (ISR /
+reconocimiento bajo interferencias) y `resupply` (logística en disputa sostenida
+por bases). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
+`optimal` (óptimo exacto por tick, baseline).
+
+> **Uso responsable (encuadre militar).** `recon` y `resupply` son casos de
+> **coordinación / logística / ISR** — *qué unidad va a qué punto* — bajo
+> interferencias y desgaste. Ghost Commander es un asignador de tareas abstracto:
+> **no modela armas, blancos humanos ni decisiones letales**, y no es objetivo
+> añadirlo. La frontera es dura, igual que en [Titan Eye].
 
 ### Cuándo la coordinación *gana o pierde* la misión
 

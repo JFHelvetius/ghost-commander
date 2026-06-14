@@ -99,6 +99,10 @@ _SCENARIO_DIFF = {
     "specialist": "**Flota mixta**: cada tarea pide un *tipo* de agente, y uno escasea.",
     "endurance": "**Desgaste largo + bases de recarga**: sin recargar, la flota se extingue.",
     "joint": "**Tareas en equipo**: hacen falta 2 agentes a la vez → hay que sincronizar.",
+    "recon": "**ISR / reconocimiento** (coordinación, no targeting): cubrir puntos "
+             "antes de que caduque su ventana, con interferencias (EW) y desgaste.",
+    "resupply": "**Logística en disputa**: reparto bajo desgaste sostenido por bases "
+                "(FOB) — sin ellas, la flota se agota antes de servir el campo.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -136,6 +140,12 @@ _SCENARIO_DESC = {
                  "flota se extingue; con ellas se sostiene.",
     "joint": "~40% de tareas exigen un equipo de 2 a la vez. Coordinación "
              "*entre* agentes: hay que sincronizar llegadas.",
+    "recon": "**ISR / reconocimiento** (coordinación, no targeting): drones cubren "
+             "puntos de interés antes de que caduque su ventana de inteligencia, "
+             "bajo interferencias (EW) y desgaste.",
+    "resupply": "**Logística en disputa**: reparto autónomo a posiciones avanzadas "
+                "bajo fuerte desgaste, sostenido por bases (FOB) de recarga. Sin "
+                "bases la flota se agota antes de servir el campo.",
 }
 
 
@@ -562,9 +572,11 @@ def _parse_nl(text: str) -> dict:
     import re
 
     low = text.lower()
-    unit = r"(dron|drone|unidad|unidades|agente|agentes|robot|robots|veh[ií]culo|equipo|equipos)"
+    unit = (r"(dron|drone|drones|unidad|unidades|agente|agentes|robot|robots|veh[ií]culo|"
+            r"veh[ií]culos|equipo|equipos|convoy|convoyes)")
     job = (r"(hospital|hospitales|punto|puntos|entrega|entregas|cliente|clientes|tarea|"
-           r"tareas|destino|destinos|parada|paradas|pedido|pedidos|incidencia|incidencias)")
+           r"tareas|destino|destinos|parada|paradas|pedido|pedidos|incidencia|incidencias|"
+           r"objetivo|objetivos|sector|sectores|posici[oó]n|posiciones|zona|zonas)")
     d: dict = {}
     m1 = re.search(r"(\d+)\s*" + unit, low)
     m2 = re.search(r"(\d+)\s*" + job, low)
@@ -582,7 +594,8 @@ def _parse_nl(text: str) -> dict:
                           "rapid", "a tiempo", "antes de"])
     d["shock"] = any(w in low for w in
                      ["ataque", "tormenta", "choque", "jamming", "interferencia",
-                      "apagón", "apagon", "caída masiva", "caida masiva"])
+                      "guerra electrónica", "guerra electronica", "ew ",
+                      "apagón", "apagon", "caída masiva", "caida masiva", "emboscada"])
     d["failures"] = d["shock"] or any(w in low for w in
                                       ["fallo", "fallan", "pierden", "caen", "averí",
                                        "averi", "se rompen", "bajas"])
@@ -611,6 +624,7 @@ _CC_EXAMPLES = [
     ("🚁 Drones → hospitales", "6 drones que entregan a 30 hospitales, urgente y con fallos"),
     ("📦 Repartidores → pedidos", "20 repartidores y 80 pedidos que van surgiendo"),
     ("🚒 Equipos → incidencias", "15 equipos atienden 50 incidencias tras un ataque"),
+    ("🛰 ISR / reconocimiento", "12 drones cubren 40 objetivos con interferencias, urgente"),
 ]
 
 
@@ -658,11 +672,13 @@ def _render_custom() -> None:
         st.session_state.setdefault(k, v)
 
     st.markdown("**1 · Empieza por un ejemplo** (un clic lo rellena), o escribe tu frase:")
-    for col, (lab, phrase) in zip(st.columns(3), _CC_EXAMPLES):
-        if col.button(lab, use_container_width=True):
-            st.session_state.cc_text = phrase
-            _cc_apply(phrase)
-            st.rerun()
+    for row_start in range(0, len(_CC_EXAMPLES), 2):
+        pair = _CC_EXAMPLES[row_start:row_start + 2]
+        for col, (lab, phrase) in zip(st.columns(2), pair):
+            if col.button(lab, use_container_width=True, key=f"ex_{row_start}_{lab}"):
+                st.session_state.cc_text = phrase
+                _cc_apply(phrase)
+                st.rerun()
     st.text_input("Descríbelo en una frase", key="cc_text",
                   placeholder="p. ej.: 6 drones que entregan a 30 hospitales, urgente")
     if st.button("✨ Interpretar la frase"):

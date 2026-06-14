@@ -316,6 +316,51 @@ PRESETS: dict[str, Scenario] = {
         cooperative_fraction=0.4,
         cooperative_agents=2,
     ),
+    # --- Military-flavoured COORDINATION / LOGISTICS cases (no targeting, no
+    # weapons, no lethal decisions — this is a task-allocation simulator: which
+    # unit goes to which point). They are ordinary combinations of the existing
+    # mechanics with operational framing.
+    #
+    # ISR / reconnaissance: recon drones must observe points of interest before
+    # their intel window closes (deadlines), under electronic-warfare jamming (a
+    # shock that downs part of the fleet) and steady attrition.
+    "recon": Scenario(
+        name="recon",
+        seed=42,
+        n_agents=40,
+        n_tasks=60,
+        width=240.0,
+        height=240.0,
+        max_ticks=300,
+        agent_speed=3.0,
+        random_failure_rate=0.004,
+        shock_tick=22,            # EW jamming event mid-mission
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.5,  # intel windows
+        deadline_slack_base=16,
+    ),
+    # Contested logistics / resupply: autonomous transport delivers to forward
+    # positions under heavy resource drain, sustained by recharge bases (FOBs).
+    # Without good routing the fleet burns out before the field is served.
+    "resupply": Scenario(
+        name="resupply",
+        seed=42,
+        n_agents=45,
+        n_tasks=65,
+        width=240.0,
+        height=240.0,
+        max_ticks=460,
+        agent_speed=2.8,
+        resource_drain_working=0.038,
+        resource_drain_moving=0.014,
+        random_failure_rate=0.004,
+        shock_tick=None,
+        n_bases=4,
+        recharge_threshold=0.3,
+        recharge_rate=0.2,
+        # no deadlines: this case is about *sustaining* the fleet through attrition
+        # with FOB recharge, not punctuality (deadlines + recharge fight each other).
+    ),
 }
 
 
