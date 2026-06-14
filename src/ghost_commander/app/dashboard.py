@@ -103,6 +103,10 @@ _SCENARIO_DIFF = {
              "antes de que caduque su ventana, con interferencias (EW) y desgaste.",
     "resupply": "**Logística en disputa**: reparto bajo desgaste sostenido por bases "
                 "(FOB) — sin ellas, la flota se agota antes de servir el campo.",
+    "sar": "**Búsqueda y rescate**: llegar a supervivientes antes de que cierre su "
+           "ventana (plazos), extracciones que exigen equipo de 2, y una réplica.",
+    "patrol": "**Vigilancia persistente**: eventos que aparecen sin parar en un área "
+              "grande y hay que atender a tiempo, con flota modesta. Cobertura sostenida.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -146,6 +150,12 @@ _SCENARIO_DESC = {
     "resupply": "**Logística en disputa**: reparto autónomo a posiciones avanzadas "
                 "bajo fuerte desgaste, sostenido por bases (FOB) de recarga. Sin "
                 "bases la flota se agota antes de servir el campo.",
+    "sar": "**Búsqueda y rescate**: alcanzar supervivientes antes de que cierre su "
+           "ventana de supervivencia (plazos ajustados); ~30% de extracciones "
+           "necesitan un equipo de 2; una réplica adelgaza la flota.",
+    "patrol": "**Vigilancia persistente / cobertura**: eventos a inspeccionar que "
+              "aparecen sin parar en un área grande y deben atenderse a tiempo, con "
+              "una flota modesta. El reto es la cobertura sostenida.",
 }
 
 
@@ -573,10 +583,12 @@ def _parse_nl(text: str) -> dict:
 
     low = text.lower()
     unit = (r"(dron|drone|drones|unidad|unidades|agente|agentes|robot|robots|veh[ií]culo|"
-            r"veh[ií]culos|equipo|equipos|convoy|convoyes)")
+            r"veh[ií]culos|equipo|equipos|convoy|convoyes|rescatador|rescatadores)")
     job = (r"(hospital|hospitales|punto|puntos|entrega|entregas|cliente|clientes|tarea|"
            r"tareas|destino|destinos|parada|paradas|pedido|pedidos|incidencia|incidencias|"
-           r"objetivo|objetivos|sector|sectores|posici[oó]n|posiciones|zona|zonas)")
+           r"objetivo|objetivos|sector|sectores|posici[oó]n|posiciones|zona|zonas|"
+           r"superviviente|supervivientes|v[ií]ctima|v[ií]ctimas|herido|heridos|"
+           r"persona|personas|evento|eventos)")
     d: dict = {}
     m1 = re.search(r"(\d+)\s*" + unit, low)
     m2 = re.search(r"(\d+)\s*" + job, low)
@@ -591,7 +603,8 @@ def _parse_nl(text: str) -> dict:
         d["tasks"] = nums[1]
     d["deadlines"] = any(w in low for w in
                          ["urgent", "plazo", "deadline", "sangre", "emergencia", "rápid",
-                          "rapid", "a tiempo", "antes de"])
+                          "rapid", "a tiempo", "antes de", "contra reloj", "rescate",
+                          "superviviente", "víctima", "victima", "herido"])
     d["shock"] = any(w in low for w in
                      ["ataque", "tormenta", "choque", "jamming", "interferencia",
                       "guerra electrónica", "guerra electronica", "ew ",
@@ -625,6 +638,7 @@ _CC_EXAMPLES = [
     ("📦 Repartidores → pedidos", "20 repartidores y 80 pedidos que van surgiendo"),
     ("🚒 Equipos → incidencias", "15 equipos atienden 50 incidencias tras un ataque"),
     ("🛰 ISR / reconocimiento", "12 drones cubren 40 objetivos con interferencias, urgente"),
+    ("🚑 Búsqueda y rescate", "10 equipos de rescate y 40 supervivientes, contra reloj"),
 ]
 
 

@@ -361,6 +361,46 @@ PRESETS: dict[str, Scenario] = {
         # no deadlines: this case is about *sustaining* the fleet through attrition
         # with FOB recharge, not punctuality (deadlines + recharge fight each other).
     ),
+    # Search & rescue: reach survivors before their survival window closes (tight
+    # deadlines); ~30% of cases need a 2-unit team to extract (cooperative tasks);
+    # an aftershock thins the fleet. Triage's "save the savable" really pays here.
+    "sar": Scenario(
+        name="sar",
+        seed=42,
+        n_agents=40,
+        n_tasks=50,
+        width=220.0,
+        height=220.0,
+        max_ticks=280,
+        agent_speed=3.0,
+        random_failure_rate=0.003,
+        shock_tick=18,            # aftershock
+        shock_failure_rate=0.20,
+        deadline_slack_factor=2.5,  # survival windows (tight)
+        deadline_slack_base=10,
+        cooperative_fraction=0.3,   # extractions need a 2-unit team
+        cooperative_agents=2,
+    ),
+    # Persistent surveillance / area coverage: events to inspect appear across a
+    # large area throughout the mission and must be handled promptly (deadlines)
+    # with a modest fleet. The challenge is sustained coverage, not a one-off push.
+    "patrol": Scenario(
+        name="patrol",
+        seed=42,
+        n_agents=30,
+        n_tasks=12,
+        dynamic_tasks=70,
+        arrival_start_tick=4,
+        arrival_end_tick=240,     # a steady stream, not a wave
+        width=280.0,
+        height=280.0,
+        max_ticks=340,
+        agent_speed=3.0,
+        random_failure_rate=0.002,
+        shock_tick=None,
+        deadline_slack_factor=2.5,  # events go stale if not inspected promptly
+        deadline_slack_base=12,
+    ),
 }
 
 

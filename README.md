@@ -107,8 +107,9 @@ escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 (entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
 heterogénea con un especialista escaso), `endurance` (desgaste largo con bases
 de recarga), `joint` (tareas cooperativas que exigen equipos), `recon` (ISR /
-reconocimiento bajo interferencias) y `resupply` (logística en disputa sostenida
-por bases). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
+reconocimiento bajo interferencias), `resupply` (logística en disputa sostenida
+por bases), `sar` (búsqueda y rescate contra reloj con extracciones en equipo) y
+`patrol` (vigilancia persistente de un área grande). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
 `optimal` (óptimo exacto por tick, baseline).
 
 > **Uso responsable (encuadre militar).** `recon` y `resupply` son casos de
