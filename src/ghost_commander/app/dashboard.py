@@ -62,7 +62,7 @@ _STATUS_COLOR = {
 _PRIORITY_SIZE = {1: 9, 2: 12, 3: 15, 4: 19, 5: 24}
 
 # Rank colors for the strategy comparison (winner -> worst).
-_RANK_COLORS = ["#27d17c", "#7fcf7a", "#f4b942", "#e0484f"]
+_RANK_COLORS = ["#27d17c", "#5cc887", "#9fc56f", "#f4b942", "#e07a3a", "#e0484f"]
 
 
 def _lerp_color(c1: tuple[int, int, int], c2: tuple[int, int, int], t: float) -> str:
@@ -112,6 +112,10 @@ _STRATEGY_GUIDE = {
     "triage": ("Como *global* pero mirando los **plazos**: descarta lo perdido y corre "
                "a lo urgente salvable.",
                "Cuando los **deadlines aprietan** (rush, contested)."),
+    "optimal": ("Asignación **óptima exacta** por tick (algoritmo húngaro) del mismo "
+                "objetivo que persiguen las heurísticas.",
+                "Es el **techo** de ese objetivo; pero al ser *miope* (no mira "
+                "plazos), triage puede ganarle bajo presión."),
 }
 
 _SCENARIO_DESC = {

@@ -98,7 +98,8 @@ escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 (entorno cambiante: tareas que llegan en oleadas), `specialist` (flota
 heterogénea con un especialista escaso), `endurance` (desgaste largo con bases
 de recarga), `joint` (tareas cooperativas que exigen equipos). Estrategias:
-`greedy`, `auction`, `global`, `triage` (deadline-aware).
+`greedy`, `auction`, `global`, `triage` (deadline-aware), `optimal` (óptimo
+exacto por tick, baseline).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
@@ -251,7 +252,7 @@ src/ghost_commander/
     events.py    #   EventBus tipado + catálogo de eventos (timeline)
     clock.py     #   reloj de paso fijo determinista
   domain/        # modelo: Agent, Task, World
-  coordination/  # estrategias intercambiables: greedy, auction, global, triage
+  coordination/  # estrategias: greedy, auction, global, triage, optimal (húngaro)
   sim/           # motor, modelo de fallos, métricas, grabador, comparador
   app/           # dashboard Streamlit
   cli.py         # entrada de línea de comandos
@@ -322,6 +323,25 @@ Hallazgo honesto: **ayuda bajo presión de plazos** (`rush` +3-6 pts, `specialis
 de tareas (`streaming`) puede costar ~2 pts, porque perseguir rescates gasta
 viaje. La preempción no es gratis — un resultado que el propio modelo deja ver.
 
+## Baseline óptimo exacto (`optimal`)
+
+`greedy`, `auction` y `global` son *heurísticas* que aproximan la asignación que
+maximiza el objetivo por tick (`prioridad / distancia`). La estrategia `optimal`
+lo resuelve **exacto** cada tick con el **algoritmo húngaro** (Kuhn–Munkres, sin
+dependencias; cae a la heurística global por encima de ~140 para seguir rápida).
+Es el **techo** de ese objetivo: mide cuánto pierde cada heurística.
+
+Hallazgo (instructivo): `optimal` bate a `global` donde la asignación importa
+(`contested`, `specialist`), pero **es miope** — no mira el tiempo. Por eso bajo
+plazos apretados `triage` (consciente de deadlines) **le gana al óptimo-por-tick**:
+
+```
+rush (media):  triage 81%  >  optimal 78% ≈ global 78%  >  greedy 69%
+```
+
+Óptimo-por-tick ≠ óptimo-de-misión. Que el modelo deje ver esa distinción es,
+en sí, parte de su valor.
+
 ## Estado
 
 MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
@@ -331,9 +351,10 @@ llegan durante la misión (`streaming`), **agentes heterogéneos** con
 especialización y cuellos de botella (`specialist`), **recuperación** con bases
 de recarga que sostienen la flota en misiones de desgaste (`endurance`),
 **tareas cooperativas** que exigen equipos sincronizados (`joint`), y
-**re-planificación continua** opt-in (preempción de rescate, `--replan`). Roadmap
-inmediato: estrategia consciente de recarga (anticipar el repostaje), equipos
-que además requieren especialistas mixtos, y un baseline óptimo (Hungarian).
+**re-planificación continua** opt-in (preempción de rescate, `--replan`), y un
+**baseline óptimo exacto** (estrategia `optimal`, algoritmo húngaro). Roadmap
+inmediato: recarga proactiva (anticipar el repostaje), equipos que además
+requieren especialistas mixtos, y una estrategia que combine triage + óptimo.
 
 ## Licencia
 

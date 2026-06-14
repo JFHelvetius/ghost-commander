@@ -50,3 +50,27 @@ def test_assignment_is_deterministic(name: str) -> None:
 def test_unknown_strategy_raises() -> None:
     with pytest.raises(ValueError):
         make_strategy("does-not-exist")
+
+
+def test_optimal_maximizes_total_score() -> None:
+    # The exact optimum must score at least as high as the greedy heuristic on
+    # the same per-tick objective (priority_weight / distance).
+    from ghost_commander.coordination.base import priority_weight
+
+    w = World(width=100, height=100)
+    for i in range(6):
+        w.add_agent(Agent(id=i, x=i * 15, y=0))
+    for j in range(6):
+        w.add_task(Task(id=j, x=j * 15, y=40,
+                        priority=TaskPriority((j % 5) + 1)))
+
+    def total(pairs: list[tuple[int, int]]) -> float:
+        s = 0.0
+        for aid, tid in pairs:
+            a, t = w.agents[aid], w.tasks[tid]
+            s += priority_weight(t.priority) / (a.distance_to(t.x, t.y) + 1e-6)
+        return s
+
+    greedy_total = total(make_strategy("greedy").assign(w))
+    optimal_total = total(make_strategy("optimal").assign(w))
+    assert optimal_total >= greedy_total - 1e-9
