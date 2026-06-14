@@ -207,7 +207,8 @@ def _frame_scatters(
     return traces
 
 
-def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.Figure:
+def _animated_map_figure(rec: RunRecording, width: float, height: float,
+                         frame_ms: int = 130) -> go.Figure:
     """A play-able, scrubbable map: watch the fleet glide, fail and reorganize."""
     n = len(rec.frames)
     step = max(1, -(-n // 240))  # ceil division -> <= 240 frames
@@ -233,9 +234,9 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
     # WebGL (Scattergl) renders fast and uniformly, so frame == transition gives
     # constant-velocity gliding (no speed-up once the fleet thins after the shock).
     play = dict(label="▶ Reproducir", method="animate",
-                args=[None, {"frame": {"duration": 130, "redraw": True},
+                args=[None, {"frame": {"duration": frame_ms, "redraw": True},
                              "fromcurrent": True,
-                             "transition": {"duration": 130, "easing": "linear"}}])
+                             "transition": {"duration": frame_ms, "easing": "linear"}}])
     pause = dict(label="⏸ Pausa", method="animate",
                  args=[[None], {"frame": {"duration": 0, "redraw": False},
                                 "mode": "immediate"}])
@@ -346,16 +347,51 @@ def _sidebar() -> tuple[Scenario, str]:
     )
     seed = st.sidebar.number_input("Seed", min_value=0, value=int(base.seed), step=1)
 
+    dur_label = st.sidebar.select_slider(
+        "Duración de la misión", options=["Normal", "Largo (2×)", "Épico (3×)"],
+        value="Normal",
+        help="Dilata el tiempo: la misma situación se desarrolla a lo largo de más "
+             "pasos (agentes más lentos, trabajo y desgaste repartidos). El "
+             "resultado es prácticamente el mismo; solo cambia cuánto tarda.")
+    time_scale = {"Normal": 1, "Largo (2×)": 2, "Épico (3×)": 3}[dur_label]
+
+    play_label = st.sidebar.select_slider(
+        "Velocidad de reproducción", options=["Lento", "Normal", "Rápido"],
+        value="Normal", help="Solo afecta a la animación, no a la simulación.")
+    st.session_state["play_ms"] = {"Lento": 220, "Normal": 130, "Rápido": 70}[play_label]
+
     with st.sidebar.expander("Ajustes finos"):
         n_agents = st.slider("Agentes", 10, 300, int(base.n_agents), step=10)
         n_tasks = st.slider("Tareas (iniciales)", 5, 120, int(base.n_tasks), step=5)
-        max_ticks = st.slider("Máx. ticks", 100, 1000, int(base.max_ticks), step=50)
+        max_ticks = st.slider("Máx. ticks", 100, 2000, int(base.max_ticks), step=50)
 
     scenario = dataclasses.replace(
         base, seed=int(seed), n_agents=int(n_agents), n_tasks=int(n_tasks),
         max_ticks=int(max_ticks),
     )
-    return scenario, strategy
+    return _time_dilate(scenario, time_scale), strategy
+
+
+def _time_dilate(sc: Scenario, k: int) -> Scenario:
+    """Stretch a scenario over k× more ticks with the same character (same spatial
+    paths, same expected losses), so the situation plays out over more time."""
+    if k <= 1:
+        return sc
+    return dataclasses.replace(
+        sc,
+        agent_speed=sc.agent_speed / k,
+        agent_capacity=sc.agent_capacity / k,
+        resource_drain_working=sc.resource_drain_working / k,
+        resource_drain_moving=sc.resource_drain_moving / k,
+        random_failure_rate=sc.random_failure_rate / k,
+        shock_tick=None if sc.shock_tick is None else int(sc.shock_tick * k),
+        recharge_rate=sc.recharge_rate / k,
+        deadline_slack_base=int(sc.deadline_slack_base * k),
+        deadline_slack_factor=sc.deadline_slack_factor * k,
+        arrival_start_tick=int(sc.arrival_start_tick * k),
+        arrival_end_tick=int(sc.arrival_end_tick * k),
+        max_ticks=int(sc.max_ticks * k),
+    )
 
 
 def main() -> None:
@@ -513,7 +549,8 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
     left, right = st.columns([3, 2])
     with left:
         st.plotly_chart(
-            _animated_map_figure(rec, _world_w(rec), _world_h(rec)),
+            _animated_map_figure(rec, _world_w(rec), _world_h(rec),
+                                 frame_ms=int(st.session_state.get("play_ms", 130))),
             use_container_width=True,
         )
         st.caption("**Agentes** (color=qué hacen, forma=▲ se mueve / ◆ en tarea / "
