@@ -521,6 +521,7 @@ def main() -> None:
         with st.spinner("Simulando…"):
             st.session_state["rec"] = run_scenario(scenario, strategy, replan=replan)
             st.session_state["scenario"] = scenario
+            st.session_state["replan"] = replan
             st.session_state["rec_label"] = (
                 f"{scenario.name} · {strategy} · seed {scenario.seed} · "
                 f"{scenario.n_agents} agentes"
@@ -543,14 +544,128 @@ def main() -> None:
     )
     _intro()
 
-    tab_mission, tab_compare, tab_guide = st.tabs(
-        ["🛰  Misión", "📊  Comparar estrategias", "📖  Guía"])
+    tab_mission, tab_compare, tab_custom, tab_guide = st.tabs(
+        ["🛰  Misión", "📊  Comparar estrategias", "✏️  Tu caso", "📖  Guía"])
     with tab_mission:
         _render_mission(st.session_state["rec"], st.session_state.get("scenario", scenario))
     with tab_compare:
-        _render_compare(scenario, replan)
+        _render_compare(st.session_state.get("scenario", scenario),
+                        st.session_state.get("replan", replan))
+    with tab_custom:
+        _render_custom()
     with tab_guide:
         _render_guide()
+
+
+def _parse_nl(text: str) -> dict:
+    """Tiny local heuristic parser (no API): map a one-liner to scenario settings."""
+    import re
+
+    low = text.lower()
+    unit = r"(dron|drone|unidad|unidades|agente|agentes|robot|robots|veh[ií]culo|equipo|equipos)"
+    job = (r"(hospital|hospitales|punto|puntos|entrega|entregas|cliente|clientes|tarea|"
+           r"tareas|destino|destinos|parada|paradas|pedido|pedidos|incidencia|incidencias)")
+    d: dict = {}
+    m1 = re.search(r"(\d+)\s*" + unit, low)
+    m2 = re.search(r"(\d+)\s*" + job, low)
+    nums = [int(x) for x in re.findall(r"\d+", low)]
+    if m1:
+        d["agents"] = int(m1.group(1))
+    elif nums:
+        d["agents"] = nums[0]
+    if m2:
+        d["tasks"] = int(m2.group(1))
+    elif len(nums) >= 2:
+        d["tasks"] = nums[1]
+    d["deadlines"] = any(w in low for w in
+                         ["urgent", "plazo", "deadline", "sangre", "emergencia", "rápid",
+                          "rapid", "a tiempo", "antes de"])
+    d["shock"] = any(w in low for w in
+                     ["ataque", "tormenta", "choque", "jamming", "interferencia",
+                      "apagón", "apagon", "caída masiva", "caida masiva"])
+    d["failures"] = d["shock"] or any(w in low for w in
+                                      ["fallo", "fallan", "pierden", "caen", "averí",
+                                       "averi", "se rompen", "bajas"])
+    d["arrivals"] = any(w in low for w in
+                        ["llegan", "nuevas", "nuevos", "sobre la marcha", "dinámic",
+                         "dinamic", "continu", "van surgiendo", "aparecen"])
+    return d
+
+
+def _build_custom_scenario(agents: int, tasks: int, area: int, seed: int, deadlines: bool,
+                           failures: bool, shock: bool, arrivals: bool) -> Scenario:
+    max_ticks = min(2000, max(300, tasks * 10))
+    initial = max(1, tasks // 2) if arrivals else tasks
+    return Scenario(
+        name="custom", seed=int(seed), width=float(area), height=float(area),
+        n_agents=int(agents), n_tasks=int(initial), max_ticks=max_ticks,
+        random_failure_rate=0.004 if failures else 0.0,
+        shock_tick=int(max_ticks * 0.08) if shock else None, shock_failure_rate=0.3,
+        deadline_slack_factor=3.0 if deadlines else 0.0, deadline_slack_base=14,
+        dynamic_tasks=(tasks - initial) if arrivals else 0,
+        arrival_start_tick=5, arrival_end_tick=max(20, max_ticks // 3),
+    )
+
+
+def _render_custom() -> None:
+    st.markdown("### Monta tu propio caso")
+    st.markdown(
+        "Ghost Commander es un **coordinador genérico**: cualquier situación de *N "
+        "unidades que atienden M puntos* encaja (drones ↔ hospitales, equipos ↔ "
+        "incidencias, repartidores ↔ pedidos…). **No usa datos reales** — es una "
+        "simulación configurable — pero puedes montar tu hipótesis y ver cómo se "
+        "comporta cada estrategia."
+    )
+    defaults = dict(cc_agents=20, cc_tasks=40, cc_area=200, cc_seed=42,
+                    cc_deadlines=False, cc_failures=True, cc_shock=False,
+                    cc_arrivals=False, cc_strategy="triage", cc_replan=False)
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+
+    txt = st.text_input(
+        "Descríbelo en una frase (opcional)",
+        placeholder="p. ej.: 6 drones que entregan a 30 hospitales, urgente y con fallos")
+    if st.button("✨ Interpretar la frase"):
+        d = _parse_nl(txt)
+        if "agents" in d:
+            st.session_state.cc_agents = min(300, max(1, d["agents"]))
+        if "tasks" in d:
+            st.session_state.cc_tasks = min(200, max(1, d["tasks"]))
+        st.session_state.cc_deadlines = d["deadlines"]
+        st.session_state.cc_failures = d["failures"]
+        st.session_state.cc_shock = d["shock"]
+        st.session_state.cc_arrivals = d["arrivals"]
+        st.rerun()
+
+    c1, c2, c3 = st.columns(3)
+    c1.number_input("Unidades (drones / agentes)", 1, 300, key="cc_agents")
+    c2.number_input("Puntos / tareas", 1, 200, key="cc_tasks")
+    c3.number_input("Tamaño del área", 50, 500, step=10, key="cc_area")
+    c4, c5 = st.columns(2)
+    c4.selectbox("Estrategia", list(STRATEGIES), key="cc_strategy")
+    c5.number_input("Seed", 0, key="cc_seed")
+
+    st.checkbox("⏱️ Hay plazos / urgencias (las tareas pueden fallar)", key="cc_deadlines")
+    st.checkbox("⚠️ Hay fallos / pérdidas de unidades", key="cc_failures")
+    st.checkbox("💥 Un golpe puntual (ataque/tormenta) tumba a muchas a la vez", key="cc_shock")
+    st.checkbox("📥 Llegan tareas nuevas durante la misión", key="cc_arrivals")
+    st.checkbox("🔁 Re-planificación continua (preempción de rescate)", key="cc_replan")
+
+    if st.button("▶ Ejecutar mi caso", type="primary", use_container_width=True):
+        sc = _build_custom_scenario(
+            st.session_state.cc_agents, st.session_state.cc_tasks, st.session_state.cc_area,
+            st.session_state.cc_seed, st.session_state.cc_deadlines,
+            st.session_state.cc_failures, st.session_state.cc_shock,
+            st.session_state.cc_arrivals)
+        strat = st.session_state.cc_strategy
+        st.session_state["rec"] = run_scenario(sc, strat, replan=st.session_state.cc_replan)
+        st.session_state["scenario"] = sc
+        st.session_state["replan"] = st.session_state.cc_replan
+        st.session_state["rec_label"] = (
+            f"caso propio · {strat} · {st.session_state.cc_agents} unidades / "
+            f"{st.session_state.cc_tasks} puntos")
+        st.success("✅ Caso ejecutado. Abre la pestaña **🛰 Misión** para verlo en "
+                   "movimiento, y **📊 Comparar** para probar todas las estrategias en él.")
 
 
 def _render_guide() -> None:

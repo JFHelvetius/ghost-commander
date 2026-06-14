@@ -54,6 +54,15 @@ reasignaciones: la comparación hace visible *por qué* la coordinación importa
 
 ---
 
+## Tu propio caso
+
+El dashboard es un **coordinador genérico**: no usa datos reales, pero cualquier
+situación de *N unidades que atienden M puntos* se modela. En la pestaña
+**✏️ Tu caso** describes la hipótesis en una frase — *"6 drones que entregan a 30
+hospitales, urgente y con fallos"* — y un parser local la traduce a un escenario
+(unidades, puntos, plazos, fallos, onda de choque, llegadas), que puedes ajustar
+a mano y ejecutar. Luego lo ves en **🛰 Misión** y pruebas las estrategias en **📊**.
+
 ## Demo en vivo
 
 **▶ [ghost-commander.streamlit.app](https://ghost-commander-2payzpkpventdr3jqx95bg.streamlit.app/)**
