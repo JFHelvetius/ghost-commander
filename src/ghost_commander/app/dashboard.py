@@ -86,6 +86,34 @@ def _hud_annotations(m: dict, shock: bool) -> list[dict]:
                          font=dict(color="#ff5a60", size=34), opacity=0.9))
     return anns
 
+# One-line "what makes this one different" for the comparison table.
+_SCENARIO_DIFF = {
+    "default": "Lo básico: una **onda de choque** tumba un tercio de la flota a mitad "
+               "de misión. Todas completan; ves la reorganización.",
+    "swarm": "**Escala**: 200 agentes y 80 tareas a la vez.",
+    "scarce": "**Recursos justos**: la flota se desgasta; hay que cuidarla.",
+    "calm": "**Sin sorpresas** (ni fallos ni shock): coordinación 'en limpio', de referencia.",
+    "contested": "**Plazos**: las tareas *fallan* si no se hacen a tiempo → la misión se puede **perder**.",
+    "rush": "**Plazos muy apretados**: solo gana quien hace *triage* (prioriza lo salvable).",
+    "streaming": "**El mundo cambia**: empieza con pocas tareas y llegan más en oleadas.",
+    "specialist": "**Flota mixta**: cada tarea pide un *tipo* de agente, y uno escasea.",
+    "endurance": "**Desgaste largo + bases de recarga**: sin recargar, la flota se extingue.",
+    "joint": "**Tareas en equipo**: hacen falta 2 agentes a la vez → hay que sincronizar.",
+}
+
+# How each strategy decides + when it shines (for the comparison table).
+_STRATEGY_GUIDE = {
+    "greedy": ("Cada unidad va a la mejor tarea **más cercana** (decisión local, rápida).",
+               "Casi nunca destaca; suele ser la **peor** bajo presión."),
+    "auction": ("Las tareas se **subastan** y van al mejor postor (mira tarea por tarea).",
+                "Cuando varias unidades se pelean por las mismas tareas."),
+    "global": ("Empareja **toda la flota con todas las tareas a la vez** (visión global).",
+               "En general: equilibrada y sólida."),
+    "triage": ("Como *global* pero mirando los **plazos**: descarta lo perdido y corre "
+               "a lo urgente salvable.",
+               "Cuando los **deadlines aprietan** (rush, contested)."),
+}
+
 _SCENARIO_DESC = {
     "default": "Flota amplia, onda de choque a mitad de misión. Las 3 estrategias "
                "completan; la diferencia es de velocidad.",
@@ -492,11 +520,49 @@ def main() -> None:
     )
     _intro()
 
-    tab_mission, tab_compare = st.tabs(["🛰  Misión", "📊  Comparar estrategias"])
+    tab_mission, tab_compare, tab_guide = st.tabs(
+        ["🛰  Misión", "📊  Comparar estrategias", "📖  Guía"])
     with tab_mission:
         _render_mission(st.session_state["rec"], st.session_state.get("scenario", scenario))
     with tab_compare:
         _render_compare(scenario)
+    with tab_guide:
+        _render_guide()
+
+
+def _render_guide() -> None:
+    """Side-by-side reference so the user sees the *differences*, not one at a time."""
+    st.markdown("#### Los escenarios — *en qué se diferencian*")
+    st.caption("Cada escenario plantea un reto distinto del problema de coordinación. "
+               "Pruébalos y mira cómo cambia la misión.")
+    st.markdown(
+        "| Escenario | El reto que añade |\n|---|---|\n"
+        + "\n".join(f"| **{name}** | {_SCENARIO_DIFF.get(name, '')} |" for name in PRESETS)
+    )
+
+    st.markdown("#### Las estrategias — *cómo piensa cada comandante*")
+    st.caption("Mismo escenario y seed, solo cambia esto. La diferencia que ves es "
+               "pura coordinación. Compáralas en la pestaña 📊.")
+    st.markdown(
+        "| Estrategia | Cómo decide | Brilla cuando… |\n|---|---|---|\n"
+        + "\n".join(f"| **{name}** | {how} | {when} |"
+                    for name, (how, when) in _STRATEGY_GUIDE.items())
+    )
+
+    st.markdown("#### Cómo leer el mapa")
+    st.markdown(
+        "- **Drones** = puntos con halo. *Color* = qué hacen (🟩 trabajando · 🟦 en "
+        "ruta · ⬜ libre · 🟪 recargando); *forma* = ▲ en ruta / ◆ en una tarea / ● "
+        "libre; *tamaño* = recursos que le quedan. Si cae, desaparece.\n"
+        "- **Tareas** = cuadrados (tamaño = prioridad) que pasan de 🟧 ámbar a 🟩 "
+        "verde según se completan · ✖️ roja = fallada (no llegó a tiempo) · 🔷 = base.\n"
+        "- **Líneas azules** = las asignaciones del comandante (qué dron va a qué "
+        "tarea); míralas reorganizarse tras la onda de choque.\n"
+        "- El **HUD** de arriba del mapa y el **gráfico de progreso** se actualizan "
+        "en vivo durante la reproducción."
+    )
+    st.info("Todo es **determinista**: misma seed + escenario + estrategia ⇒ misma "
+            "misión, bit a bit. Por eso el replay es exacto y la comparación es justa.")
 
 
 def _intro() -> None:
