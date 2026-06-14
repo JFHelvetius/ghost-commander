@@ -90,29 +90,41 @@ _SCENARIO_DESC = {
 #   0 links · 1 bases · 2 tasks-open · 3 tasks-done · 4 tasks-failed · 5 halo · 6 core
 import math as _math
 
+# CRITICAL for animation: every trace must keep a CONSTANT number of points,
+# matched by index, across all frames. If a trace's length changes between frames
+# Plotly re-indexes and flings points across the map during the transition (the
+# "going crazy" bug). So tasks and links use fixed slots (absent => None/hidden),
+# exactly like the id-stable agents trace.
 
-def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> list[go.Scatter]:
-    """Fixed traces for one tick. Agents live in a SINGLE id-ordered pair of traces
-    (a soft glow halo + a crisp shaped core) so Plotly interpolates each agent's
-    position between ticks -> smooth, continuous motion (no teleporting)."""
+
+def _frame_scatters(
+    frame: dict,
+    prev_pos: dict[int, tuple[float, float]],
+    agent_ids: list[int],
+    task_ids: list[int],
+) -> list[go.Scatter]:
     world = frame["world"]
-    agents = sorted(world["agents"], key=lambda a: a["id"])
-    tasks = world["tasks"]
+    amap = {a["id"]: a for a in world["agents"]}
+    tmap = {t["id"]: t for t in world["tasks"]}
     bases = world.get("bases", [])
-    tpos = {t["id"]: (t["x"], t["y"]) for t in tasks}
+    tpos = {t["id"]: (t["x"], t["y"]) for t in world["tasks"]}
 
-    # links only for agents *en route* (moving) -> far fewer, calmer lines that
-    # don't storm the map after the shock; working agents are already on-site.
+    # --- links: one fixed 3-slot segment per agent (agent->task, then a break);
+    # None slots when the agent isn't en route. Constant length = 3 * n_agents.
     lx: list[float | None] = []
     ly: list[float | None] = []
-    for a in agents:
-        if a["status"] == "moving" and a.get("task_id") in tpos:
+    for aid in agent_ids:
+        a = amap.get(aid)
+        if a and a["status"] == "moving" and a.get("task_id") in tpos:
             tx, ty = tpos[a["task_id"]]
             lx += [a["x"], tx, None]
             ly += [a["y"], ty, None]
+        else:
+            lx += [None, None, None]
+            ly += [None, None, None]
     traces: list[go.Scatter] = [go.Scatter(
         x=lx, y=ly, mode="lines", name="asignaciones",
-        line=dict(color="rgba(58,160,255,0.11)", width=1), hoverinfo="skip",
+        line=dict(color="rgba(58,160,255,0.12)", width=1), hoverinfo="skip",
         showlegend=False,
     )]
 
@@ -123,37 +135,43 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
         text=[f"base {i}" for i in range(len(bases))], hoverinfo="text", showlegend=False,
     ))
 
-    def _bucket(t: dict) -> str:
-        return t["status"] if t["status"] in ("done", "failed") else "open"
+    # --- tasks: ONE constant-length trace over every task id that ever exists.
+    # Tasks never move, so positions are constant -> nothing glides; only colour
+    # and symbol change (snap, which is correct). Not-yet-arrived tasks are None.
+    tx_, ty_, tsym, tcol, tsize, topac, ttxt = [], [], [], [], [], [], []
+    for tid in task_ids:
+        t = tmap.get(tid)
+        if t is None:
+            tx_.append(None); ty_.append(None); tsym.append("square")
+            tcol.append("#f4b942"); tsize.append(8); topac.append(0); ttxt.append("")
+            continue
+        status = t["status"]
+        tx_.append(t["x"]); ty_.append(t["y"])
+        if status == "done":
+            tsym.append("square-open"); tcol.append("#36507a"); topac.append(0.9)
+        elif status == "failed":
+            tsym.append("x-thin"); tcol.append("#e0484f"); topac.append(1.0)
+        else:
+            tsym.append("square"); tcol.append("#f4b942"); topac.append(0.55)
+        tsize.append(_PRIORITY_SIZE.get(t["priority"], 12))
+        ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
+                    + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
+                    + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else ""))
+    traces.append(go.Scatter(
+        x=tx_, y=ty_, mode="markers", name="tareas", showlegend=False,
+        marker=dict(symbol=tsym, size=tsize, color=tcol, opacity=topac,
+                    line=dict(width=1, color=tcol)),
+        text=ttxt, hoverinfo="text",
+    ))
 
-    for bucket, (symbol, color) in {
-        "open": ("square", "#f4b942"),
-        "done": ("square-open", "#36507a"),
-        "failed": ("x-thin", "#e0484f"),
-    }.items():
-        sel = [t for t in tasks if _bucket(t) == bucket]
-        traces.append(go.Scatter(
-            x=[t["x"] for t in sel], y=[t["y"] for t in sel], mode="markers",
-            name=f"tarea·{bucket}", showlegend=False,
-            marker=dict(symbol=symbol, size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
-                        color=color, opacity=0.5 if bucket == "open" else 1.0,
-                        line=dict(width=1.4 if bucket == "failed" else 1, color=color)),
-            text=[f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
-                  + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
-                  + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else "")
-                  for t in sel],
-            hoverinfo="text",
-        ))
-
-    # agents: id-stable index so each one interpolates smoothly between ticks.
-    # Shape conveys what it's doing: a craft pointing its heading when moving,
-    # a unit token (diamond) when on station — like an ops display.
+    # --- agents: id-stable index so each one interpolates smoothly between ticks.
     ax: list[float | None] = []
     ay: list[float | None] = []
     core_c, halo_c, core_s, halo_s, syms, angs, htxt = [], [], [], [], [], [], []
-    for a in agents:
-        st_ = a["status"]
-        if st_ == "failed":
+    for aid in agent_ids:
+        a = amap.get(aid)
+        st_ = a["status"] if a else "failed"
+        if a is None or st_ == "failed":
             ax.append(None); ay.append(None)
             core_c.append("#000"); halo_c.append("#000"); core_s.append(8); halo_s.append(16)
             syms.append("circle"); angs.append(0); htxt.append("")
@@ -161,19 +179,17 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
         ax.append(a["x"]); ay.append(a["y"])
         col = _STATUS_COLOR.get(st_, "#cccccc")
         core_c.append(col); halo_c.append(col)
-        base_s = 9.0 + 3.0 * float(a["resources"])  # bigger = more resources
-        if st_ == "moving" and a["id"] in prev_pos:
-            px, py = prev_pos[a["id"]]
+        base_s = 9.0 + 3.0 * float(a["resources"])
+        if st_ == "moving" and aid in prev_pos:
+            px, py = prev_pos[aid]
             dx, dy = a["x"] - px, a["y"] - py
             if dx * dx + dy * dy > 1e-6:
                 syms.append("triangle-up"); angs.append(_math.degrees(_math.atan2(dx, dy)))
             else:
                 syms.append("diamond"); angs.append(0)
-        elif st_ == "recharging":
+        elif st_ in ("working", "recharging"):
             syms.append("diamond"); angs.append(0)
-        elif st_ == "working":
-            syms.append("diamond"); angs.append(0)
-        else:  # idle
+        else:
             syms.append("circle"); angs.append(0)
         core_s.append(base_s); halo_s.append(base_s + 12)
         htxt.append(f"agente {a['id']} · {st_} · recursos {int(a['resources']*100)}%"
@@ -194,21 +210,24 @@ def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> li
 def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.Figure:
     """A play-able, scrubbable map: watch the fleet glide, fail and reorganize."""
     n = len(rec.frames)
-    # One animation frame per tick when feasible (agents move only ~speed per tick,
-    # so motion is small and smooth). Subsample only very long runs, lightly.
     step = max(1, -(-n // 240))  # ceil division -> <= 240 frames
     idxs = list(range(0, n, step))
     if idxs[-1] != n - 1:
         idxs.append(n - 1)
 
+    # Stable, complete id lists so every frame's traces have identical length.
+    agent_ids = sorted(a["id"] for a in rec.frames[0]["world"]["agents"])
+    task_ids = sorted(t["id"] for t in rec.frames[-1]["world"]["tasks"])
+
     def _pos(i: int) -> dict[int, tuple[float, float]]:
         return {a["id"]: (a["x"], a["y"]) for a in rec.frames[i]["world"]["agents"]}
 
     prev: dict[int, tuple[float, float]] = {}
-    base = _frame_scatters(rec.frames[idxs[0]], prev)
+    base = _frame_scatters(rec.frames[idxs[0]], prev, agent_ids, task_ids)
     frames = []
     for i in idxs:
-        frames.append(go.Frame(data=_frame_scatters(rec.frames[i], prev), name=str(i)))
+        frames.append(go.Frame(data=_frame_scatters(rec.frames[i], prev, agent_ids, task_ids),
+                               name=str(i)))
         prev = _pos(i)
 
     # frame duration > transition duration leaves the browser slack to finish
