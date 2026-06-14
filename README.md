@@ -114,11 +114,15 @@ por bases), `sar` (búsqueda y rescate contra reloj con extracciones en equipo),
 exigen un **mix de especialistas** a la vez). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
 `optimal` (óptimo exacto por tick, baseline).
 
-> **Uso responsable (encuadre militar).** `recon` y `resupply` son casos de
-> **coordinación / logística / ISR** — *qué unidad va a qué punto* — bajo
-> interferencias y desgaste. Ghost Commander es un asignador de tareas abstracto:
-> **no modela armas, blancos humanos ni decisiones letales**, y no es objetivo
-> añadirlo. La frontera es dura, igual que en [Titan Eye].
+> **Alcance y frontera.** Ghost Commander es un **asignador de tareas abstracto**
+> — decide *qué unidad va a qué punto*. Los casos de matiz militar (`recon`,
+> `resupply`, `sar`, `patrol`) son **coordinación / logística / ISR / rescate**.
+> **No modela armas, blancos humanos ni decisiones letales**, y no lo hará: la
+> selección de objetivos para un efector / la asignación de armas / las
+> decisiones de uso de la fuerza quedan **fuera de alcance** (frontera dura, como
+> en Titan Eye). El límite está escrito en **[docs/SCOPE.md](docs/SCOPE.md)** y
+> **se verifica en CI** con un test que falla si el código introduce conceptos de
+> armamento ([`tests/test_scope_boundary.py`](tests/test_scope_boundary.py)).
 
 ### Cuándo la coordinación *gana o pierde* la misión
 
