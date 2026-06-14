@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ghost_commander.coordination import CoordinationStrategy, make_strategy
+from ghost_commander.coordination.base import urgency_score
 from ghost_commander.core import EventBus, EventLog, EventSeverity, EventType, RandomSource, SimClock
 from ghost_commander.domain import AgentStatus, TaskStatus
 
@@ -31,6 +32,28 @@ if TYPE_CHECKING:
     from .scenario import Scenario
 
 _RESOURCE_LOW_THRESHOLD = 0.2
+# Continuous re-planning ("rescue preemption"). To stay net-positive and avoid
+# thrashing, an en-route agent is only pulled onto another task when ALL hold:
+#  - the alternative is at least this much better (hysteresis), and
+#  - the agent isn't about to arrive at its current target (arrival guard, ticks), and
+#  - the alternative is deadline-bound and genuinely at risk (savable but tight), and
+#  - its current task isn't itself an at-risk rescue that depends on it.
+_REPLAN_HYSTERESIS = 0.5
+_REPLAN_ARRIVAL_GUARD = 4
+_REPLAN_RISK_WINDOW = 12
+
+
+def _spare_ticks(agent, task, tick: int) -> int | None:  # noqa: ANN001
+    """Slack minus estimated time-to-complete; None if the task has no deadline."""
+    import math
+
+    if task.deadline_tick is None:
+        return None
+    d = agent.distance_to(task.x, task.y)
+    ttc = math.ceil(d / max(agent.speed, 1e-6)) + math.ceil(
+        max(task.remaining, 0.0) / max(agent.capacity, 1e-6)
+    )
+    return (task.deadline_tick - tick) - ttc
 
 
 class Simulation:
@@ -39,8 +62,10 @@ class Simulation:
         scenario: Scenario,
         strategy: CoordinationStrategy | str,
         record: bool = True,
+        replan: bool = False,
     ) -> None:
         self.scenario = scenario
+        self.replan = replan
         self.strategy: CoordinationStrategy = (
             make_strategy(strategy) if isinstance(strategy, str) else strategy
         )
@@ -100,6 +125,8 @@ class Simulation:
         self.world.tick = tick
         self._spawn_arrivals(tick)
         self._manage_recharge(tick)
+        if self.replan:
+            self._replan(tick)
         self._reassign(tick)
         self._advance_agents(tick)
         self._apply_failures(tick)
@@ -109,6 +136,63 @@ class Simulation:
             self._finish(tick)
 
     # -------------------------------------------------------------- phases
+    def _replan(self, tick: int) -> None:
+        """Continuous re-planning via *rescue preemption*: each tick, redirect an
+        en-route agent to a task that is about to expire — but only when it pays.
+        Working agents are never disturbed (don't waste their trip); the strict
+        guards (hysteresis, arrival guard, at-risk-only target, don't-abandon-a-
+        rescue) keep it net-positive and thrash-free. This is what makes the
+        reassignment genuinely *dynamic*: the committed fleet is re-evaluated every
+        tick, not only when a failure frees a task."""
+        for agent in sorted(self.world.alive_agents(), key=lambda a: a.id):
+            if agent.status is not AgentStatus.MOVING or agent.task_id is None:
+                continue
+            current = self.world.tasks[agent.task_id]
+            if not current.open:
+                continue
+            # about to arrive -> let it finish the trip
+            if agent.distance_to(current.x, current.y) <= _REPLAN_ARRIVAL_GUARD * agent.speed:
+                continue
+            # don't abandon a task that is itself an at-risk rescue depending on me
+            cur_spare = _spare_ticks(agent, current, tick)
+            if (cur_spare is not None and 0 <= cur_spare <= _REPLAN_RISK_WINDOW
+                    and len(current.assigned) <= current.required_agents):
+                continue
+            keep = urgency_score(agent, current, tick) * (1.0 + _REPLAN_HYSTERESIS)
+            best, best_s = None, keep
+            for task in self.world.assignable_tasks():
+                if task.id == current.id or not agent.has_skill(task.required_skill):
+                    continue
+                spare = _spare_ticks(agent, task, tick)
+                if spare is None or spare < 0 or spare > _REPLAN_RISK_WINDOW:
+                    continue  # rescue-only: must be deadline-bound, savable and tight
+                s = urgency_score(agent, task, tick)
+                if s > best_s or (s == best_s and (best is None or task.id < best.id)):
+                    best, best_s = task, s
+            if best is None:
+                continue
+            # preempt: leave the current task (freeing a slot), rush the at-risk one
+            current.assigned.discard(agent.id)
+            if not current.assigned and current.status in (
+                TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS
+            ):
+                current.status = TaskStatus.PENDING
+            agent.task_id = best.id
+            best.assigned.add(agent.id)
+            if best.status is TaskStatus.PENDING:
+                best.status = TaskStatus.ASSIGNED
+            self.reassignments += 1
+            self.bus.emit(
+                EventType.TASK_REASSIGNED,
+                source="commander",
+                sim_tick=tick,
+                task=best.id,
+                agent=agent.id,
+                from_task=current.id,
+                reason="rescue",
+                priority=int(best.priority),
+            )
+
     def _reassign(self, tick: int) -> None:
         for agent_id, task_id in self.strategy.assign(self.world):
             agent = self.world.agents[agent_id]
@@ -369,9 +453,11 @@ class Simulation:
         return done / total
 
 
-def run_scenario(scenario: Scenario, strategy: str, record: bool = True) -> RunRecording:
+def run_scenario(
+    scenario: Scenario, strategy: str, record: bool = True, replan: bool = False
+) -> RunRecording:
     """One-call helper used by the CLI, comparison tooling and tests."""
-    return Simulation(scenario, strategy, record=record).run()
+    return Simulation(scenario, strategy, record=record, replan=replan).run()
 
 
 __all__ = ["Simulation", "run_scenario"]

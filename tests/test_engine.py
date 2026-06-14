@@ -190,3 +190,30 @@ def test_joint_preset_has_team_tasks_and_differentiates() -> None:
 def test_default_scenario_is_all_single_agent() -> None:
     sim = Simulation(Scenario(seed=2, n_agents=20, n_tasks=20), "global")
     assert all(t.required_agents == 1 for t in sim.world.tasks.values())
+
+
+def test_replan_off_is_unchanged() -> None:
+    # The default (replan off) must reproduce the exact same run as before.
+    sc = Scenario(seed=3, n_agents=60, n_tasks=30, shock_tick=12)
+    assert run_scenario(sc, "global").digest() == run_scenario(sc, "global", replan=False).digest()
+
+
+def test_replan_helps_under_deadline_pressure() -> None:
+    # Rescue preemption should save more of the mission when deadlines bite.
+    for preset in ("rush", "specialist"):
+        off = run_scenario(PRESETS[preset], "global").final_metrics["mission_completion"]
+        on = run_scenario(PRESETS[preset], "global", replan=True).final_metrics["mission_completion"]
+        assert on > off, f"{preset}: replan {on} should beat no-replan {off}"
+
+
+def test_replan_is_deterministic() -> None:
+    sc = PRESETS["rush"]
+    assert run_scenario(sc, "global", replan=True).digest() == \
+        run_scenario(sc, "global", replan=True).digest()
+
+
+def test_replan_emits_rescue_reassignments() -> None:
+    rec = run_scenario(PRESETS["rush"], "global", replan=True)
+    rescues = [e for e in rec.events
+               if e["type"] == str(EventType.TASK_REASSIGNED) and e.get("p_reason") == "rescue"]
+    assert rescues, "expected at least one rescue preemption under tight deadlines"

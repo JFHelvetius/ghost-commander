@@ -34,9 +34,10 @@ def _scenario_from_args(args: argparse.Namespace) -> Scenario:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     scenario = _scenario_from_args(args)
-    rec = run_scenario(scenario, args.strategy)
+    rec = run_scenario(scenario, args.strategy, replan=args.replan)
     m = rec.final_metrics
-    print(f"scenario={scenario.name} strategy={args.strategy} seed={scenario.seed}")
+    print(f"scenario={scenario.name} strategy={args.strategy} seed={scenario.seed}"
+          f"{' replan=on' if args.replan else ''}")
     print(f"  ticks recorded : {len(rec.frames) - 1}")
     print(f"  tasks done     : {m['tasks_done']}/{m['tasks_total']}")
     print(f"  tasks failed   : {m.get('tasks_failed', 0)}")
@@ -53,9 +54,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_compare(args: argparse.Namespace) -> int:
     scenario = _scenario_from_args(args)
-    results = compare_strategies(scenario, args.strategies)
+    results = compare_strategies(scenario, args.strategies, replan=args.replan)
     print(f"scenario={scenario.name} seed={scenario.seed} "
-          f"agents={scenario.n_agents} tasks={scenario.n_tasks}\n")
+          f"agents={scenario.n_agents} tasks={scenario.n_tasks}"
+          f"{' replan=on' if args.replan else ''}\n")
     header = (f"{'rank':<5}{'strategy':<10}{'mission':<10}{'done':<9}{'failed':<8}"
               f"{'ticks':<8}{'lost':<7}{'reassign':<9}")
     print(header)
@@ -90,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--agents", type=int, default=None)
         sp.add_argument("--tasks", type=int, default=None)
         sp.add_argument("--max-ticks", dest="max_ticks", type=int, default=None)
+        sp.add_argument("--replan", action="store_true",
+                        help="continuous rescue preemption (redirect en-route agents "
+                             "to tasks about to expire)")
 
     run = sub.add_parser("run", help="run one mission")
     add_common(run)

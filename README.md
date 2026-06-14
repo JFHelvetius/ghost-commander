@@ -302,17 +302,38 @@ fallos, motor, métricas y dashboard— es nuevo.
 pytest -q     # 19 tests: determinismo, validez de asignaciones, integración del motor
 ```
 
+## Re-planificación continua (preempción de rescate)
+
+Por defecto el comandante solo asigna a los agentes **libres** y reasigna cuando
+un fallo libera una tarea. Con `--replan` activa la **re-planificación continua**:
+cada tick re-evalúa la flota comprometida y puede **redirigir a un agente en ruta**
+para *rescatar una tarea a punto de expirar*. Para que sea net-positivo y sin
+vaivenes, el cambio exige varias condiciones (histéresis, no tocar a quien está a
+punto de llegar, solo rescatar tareas realmente en riesgo, no abandonar un rescate
+propio).
+
+```bash
+ghost-commander run --preset rush --replan      # 84% -> 88% de misión
+ghost-commander compare --preset specialist --replan
+```
+
+Hallazgo honesto: **ayuda bajo presión de plazos** (`rush` +3-6 pts, `specialist`
++3-5 pts, `contested` +1-2) y es ~**neutral** en el resto; bajo **llegada continua**
+de tareas (`streaming`) puede costar ~2 pts, porque perseguir rescates gasta
+viaje. La preempción no es gratis — un resultado que el propio modelo deja ver.
+
 ## Estado
 
 MVP v0.1.0 — ejecutable y demostrable hoy. Incluye **deadlines de tarea** (las
 misiones se pueden *perder*), una estrategia **deadline-aware (`triage`)** que
 gana cuando los plazos aprietan (`rush`), **entornos cambiantes** con tareas que
 llegan durante la misión (`streaming`), **agentes heterogéneos** con
-especialización y cuellos de botella (`specialist`), y **recuperación** con bases
-de recarga que sostienen la flota en misiones de desgaste (`endurance`), y
-**tareas cooperativas** que exigen equipos sincronizados (`joint`). Roadmap
+especialización y cuellos de botella (`specialist`), **recuperación** con bases
+de recarga que sostienen la flota en misiones de desgaste (`endurance`),
+**tareas cooperativas** que exigen equipos sincronizados (`joint`), y
+**re-planificación continua** opt-in (preempción de rescate, `--replan`). Roadmap
 inmediato: estrategia consciente de recarga (anticipar el repostaje), equipos
-que además requieren especialistas mixtos, y animación continua en el dashboard.
+que además requieren especialistas mixtos, y un baseline óptimo (Hungarian).
 
 ## Licencia
 

@@ -55,12 +55,12 @@ class StrategyResult:
 
 
 def compare_strategies(
-    scenario: Scenario, strategies: list[str] | None = None
+    scenario: Scenario, strategies: list[str] | None = None, replan: bool = False
 ) -> list[StrategyResult]:
     names = strategies or list(STRATEGIES)
     results: list[StrategyResult] = []
     for name in names:
-        rec = run_scenario(scenario, name)
+        rec = run_scenario(scenario, name, replan=replan)
         results.append(StrategyResult.from_recording(rec))
     # rank: highest completion, then fewest ticks, then fewest reassignments
     results.sort(
