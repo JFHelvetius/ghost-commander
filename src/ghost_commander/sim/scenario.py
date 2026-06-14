@@ -102,6 +102,11 @@ class Scenario:
     # unchanged). Only earlier ids are referenced, so the graph is acyclic.
     precedence_fraction: float = 0.0
 
+    # recurring / persistent monitoring (opt-in): every task must be re-serviced
+    # every ``revisit_every`` ticks. 0 = one-shot tasks. With this on, the
+    # objective is maintaining *coverage*, not finishing.
+    revisit_every: int = 0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -188,6 +193,7 @@ class Scenario:
             required_skill=required_skill,
             required_skills=required_skills,
             escalate_every=self.priority_escalation or None,
+            revisit_every=self.revisit_every or None,
         )
 
     @staticmethod
@@ -533,6 +539,24 @@ PRESETS: dict[str, Scenario] = {
         shock_tick=22,
         shock_failure_rate=0.30,
         precedence_fraction=0.45,
+    ),
+    # Persistent monitoring: every point must be re-serviced every ~40 ticks or it
+    # goes stale. The objective is *maintaining coverage*, not finishing — the
+    # commander must keep cycling a modest fleet over a wide field, forever.
+    "monitor": Scenario(
+        name="monitor",
+        seed=42,
+        n_agents=24,
+        n_tasks=30,
+        width=280.0,
+        height=280.0,
+        max_ticks=320,
+        agent_speed=3.0,
+        task_min_workload=4.0,
+        task_max_workload=10.0,   # quick services, so revisit cadence dominates
+        random_failure_rate=0.002,
+        shock_tick=None,
+        revisit_every=40,
     ),
 }
 

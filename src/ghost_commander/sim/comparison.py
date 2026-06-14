@@ -30,6 +30,7 @@ class StrategyResult:
     ticks_to_finish: int | None
     agents_lost: int
     reassignments: int
+    mean_coverage: float  # time-average coverage (for recurring/monitoring runs)
     digest: str
 
     @classmethod
@@ -41,6 +42,8 @@ class StrategyResult:
             if snap["tasks_done"] + snap.get("tasks_failed", 0) == snap["tasks_total"]:
                 ticks_to_finish = int(snap["tick"])
                 break
+        hist = rec.metrics_history
+        mean_cov = (sum(s.get("coverage", 1.0) for s in hist) / len(hist)) if hist else 1.0
         return cls(
             strategy=rec.strategy,
             completion=float(m.get("mission_completion", 0.0)),
@@ -50,6 +53,7 @@ class StrategyResult:
             ticks_to_finish=ticks_to_finish,
             agents_lost=int(m.get("agents_total", 0)) - int(m.get("agents_alive", 0)),
             reassignments=int(m.get("reassignments", 0)),
+            mean_coverage=mean_cov,
             digest=rec.digest(),
         )
 
@@ -62,10 +66,11 @@ def compare_strategies(
     for name in names:
         rec = run_scenario(scenario, name, replan=replan)
         results.append(StrategyResult.from_recording(rec))
-    # rank: highest completion, then fewest ticks, then fewest reassignments
-    results.sort(
-        key=lambda r: (-r.completion, r.ticks_to_finish or 10**9, r.reassignments)
-    )
+    if scenario.revisit_every > 0:
+        # persistent monitoring: rank by maintained coverage, not completion
+        results.sort(key=lambda r: (-r.mean_coverage, r.reassignments))
+    else:
+        results.sort(key=lambda r: (-r.completion, r.ticks_to_finish or 10**9, r.reassignments))
     return results
 
 

@@ -28,6 +28,7 @@ class MetricsSnapshot:
     priority_failed: int
     priority_total: int
     mission_completion: float  # priority-weighted fraction DONE, in [0, 1]
+    coverage: float  # for recurring points: fraction "fresh" now (1.0 if none)
     reassignments: int
     mean_resources: float
 
@@ -53,6 +54,12 @@ def compute_metrics(
     alive = [a for a in agents if a.alive]
     mean_res = sum(a.resources for a in alive) / len(alive) if alive else 0.0
 
+    recurring = [t for t in tasks if t.revisit_every is not None]
+    coverage = (
+        sum(1 for t in recurring if t.is_fresh(tick)) / len(recurring)
+        if recurring else 1.0
+    )
+
     return MetricsSnapshot(
         tick=tick,
         agents_alive=len(alive),
@@ -68,6 +75,7 @@ def compute_metrics(
         priority_failed=priority_failed,
         priority_total=priority_total,
         mission_completion=priority_completed / priority_total,
+        coverage=coverage,
         reassignments=reassignments,
         mean_resources=mean_res,
     )

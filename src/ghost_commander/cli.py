@@ -39,6 +39,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"scenario={scenario.name} strategy={args.strategy} seed={scenario.seed}"
           f"{' replan=on' if args.replan else ''}")
     print(f"  ticks recorded : {len(rec.frames) - 1}")
+    if scenario.revisit_every > 0:
+        h = rec.metrics_history
+        cov = sum(s.get("coverage", 1.0) for s in h) / len(h) * 100
+        services = sum(1 for e in rec.events if e["type"] == "task.completed")
+        print(f"  mean coverage  : {cov:.1f}%   ({services} services, "
+              f"{m['tasks_total']} points, revisit={scenario.revisit_every})")
     print(f"  tasks done     : {m['tasks_done']}/{m['tasks_total']}")
     print(f"  tasks failed   : {m.get('tasks_failed', 0)}")
     print(f"  mission (wgt)  : {m['mission_completion'] * 100:.1f}%")
@@ -58,18 +64,21 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     print(f"scenario={scenario.name} seed={scenario.seed} "
           f"agents={scenario.n_agents} tasks={scenario.n_tasks}"
           f"{' replan=on' if args.replan else ''}\n")
-    header = (f"{'rank':<5}{'strategy':<10}{'mission':<10}{'done':<9}{'failed':<8}"
-              f"{'ticks':<8}{'lost':<7}{'reassign':<9}")
-    print(header)
-    print("-" * len(header))
-    for i, r in enumerate(results, start=1):
-        ticks = "-" if r.ticks_to_finish is None else str(r.ticks_to_finish)
-        mission = f"{r.completion * 100:.1f}%"
-        done = f"{r.tasks_done}/{r.tasks_total}"
-        print(
-            f"{i:<5}{r.strategy:<10}{mission:<10}{done:<9}{r.tasks_failed:<8}{ticks:<8}"
-            f"{r.agents_lost:<7}{r.reassignments:<9}"
-        )
+    if scenario.revisit_every > 0:
+        header = f"{'rank':<5}{'strategy':<10}{'coverage':<11}{'lost':<7}{'reassign':<9}"
+        print(header + "\n" + "-" * len(header))
+        for i, r in enumerate(results, start=1):
+            print(f"{i:<5}{r.strategy:<10}{r.mean_coverage*100:<10.1f} "
+                  f"{r.agents_lost:<7}{r.reassignments:<9}")
+    else:
+        header = (f"{'rank':<5}{'strategy':<10}{'mission':<10}{'done':<9}{'failed':<8}"
+                  f"{'ticks':<8}{'lost':<7}{'reassign':<9}")
+        print(header + "\n" + "-" * len(header))
+        for i, r in enumerate(results, start=1):
+            ticks = "-" if r.ticks_to_finish is None else str(r.ticks_to_finish)
+            print(f"{i:<5}{r.strategy:<10}{r.completion*100:.1f}%   "
+                  f"{f'{r.tasks_done}/{r.tasks_total}':<9}{r.tasks_failed:<8}{ticks:<8}"
+                  f"{r.agents_lost:<7}{r.reassignments:<9}")
     print(f"\nwinner: {results[0].strategy}")
     return 0
 

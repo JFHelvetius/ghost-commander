@@ -115,6 +115,8 @@ _SCENARIO_DIFF = {
                   "importa *qué* unidad encaja, no solo cuál está cerca.",
     "phased": "**Operación por fases**: ~45% de tareas dependen de otra (bloqueadas "
               "hasta que se complete su requisito). Hay que desbloquear en el orden bueno.",
+    "monitor": "**Vigilancia con revisita**: cada punto caduca y hay que volver a "
+               "servirlo cada ~40 pasos. El objetivo es *mantener cobertura*, no terminar.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -177,6 +179,10 @@ _SCENARIO_DESC = {
               "otra y quedan *bloqueadas* (🔒) hasta que su requisito esté hecho. La "
               "misión se desbloquea en oleadas; perder el tiempo en lo que no toca "
               "atasca ramas enteras.",
+    "monitor": "**Vigilancia persistente con revisita**: cada punto debe re-servirse "
+               "cada ~40 pasos o se queda *obsoleto*. El objetivo ya no es terminar "
+               "sino **mantener la cobertura** del campo en el tiempo, ciclando una "
+               "flota modesta. greedy deja caducar lo lejano; la coordinación gana mucho.",
 }
 
 
@@ -385,11 +391,16 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float,
 def _progress_figure(rec: RunRecording, tick: int, shock_tick: int | None) -> go.Figure:
     hist = pd.DataFrame(rec.metrics_history)
     total_agents = hist["agents_total"].iloc[0] if len(hist) else 1
+    recurring = "coverage" in hist and hist["coverage"].min() < 0.999
     fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=hist["tick"], y=hist["mission_completion"] * 100, name="misión %",
-        line=dict(color="#27d17c", width=2),
-    ))
+    if recurring:
+        fig.add_trace(go.Scattergl(
+            x=hist["tick"], y=hist["coverage"] * 100, name="cobertura %",
+            line=dict(color="#27d17c", width=2)))
+    else:
+        fig.add_trace(go.Scattergl(
+            x=hist["tick"], y=hist["mission_completion"] * 100, name="misión %",
+            line=dict(color="#27d17c", width=2)))
     fig.add_trace(go.Scattergl(
         x=hist["tick"], y=hist["agents_alive"] / max(total_agents, 1) * 100,
         name="flota viva %", line=dict(color="#3aa0ff", width=2),
@@ -868,10 +879,27 @@ def _shock_kills(rec: RunRecording, shock_tick: int) -> int:
     return max(0, before - after)
 
 
+def _mean_coverage(rec: RunRecording) -> float:
+    h = rec.metrics_history
+    return (sum(s.get("coverage", 1.0) for s in h) / len(h)) if h else 1.0
+
+
 def _narrative(rec: RunRecording, scenario: Scenario) -> tuple[str, str]:
     """Plain-language story of what happened this mission — returns (level, text)."""
-    init = rec.frames[0]["metrics"]
     m = rec.final_metrics
+    if scenario.revisit_every:  # persistent monitoring: it's about coverage
+        cov = _mean_coverage(rec) * 100
+        n_pts = int(rec.frames[0]["metrics"]["tasks_total"])
+        n_agents = int(m["agents_total"])
+        services = sum(1 for e in rec.events if e["type"] == "task.completed")
+        lost = n_agents - int(m["agents_alive"])
+        txt = (f"Vigilancia persistente: **{n_agents} unidades** debían mantener "
+               f"cubiertos **{n_pts} puntos** (revisita cada {scenario.revisit_every} "
+               f"pasos). Hicieron **{services} servicios** y sostuvieron una "
+               f"**cobertura media del {cov:.0f}%**"
+               + (f"; se perdieron {lost} unidades." if lost else "."))
+        return ("success" if cov >= 60 else "warning"), txt
+    init = rec.frames[0]["metrics"]
     n_agents = int(m["agents_total"])
     init_tasks, final_tasks = int(init["tasks_total"]), int(m["tasks_total"])
     done, failed = int(m["tasks_done"]), int(m.get("tasks_failed", 0))
@@ -961,21 +989,33 @@ def _render_mission(rec: RunRecording, scenario: Scenario, key_prefix: str = "")
     (st.success if level == "success" else st.warning)("🛰 " + story)
 
     m = rec.final_metrics  # the cards summarize the *outcome* of the mission
-    failed = int(m.get("tasks_failed", 0))
+    lost_txt = f"{m['agents_total'] - m['agents_alive']}/{m['agents_total']}"
     cols = st.columns(5)
-    cols[0].metric("Misión completada", f"{m['mission_completion'] * 100:.0f}%",
-                   help="Porcentaje de tareas completadas, ponderado por prioridad "
-                        "(las urgentes pesan más).")
-    cols[1].metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}",
-                   help="Tareas completadas sobre el total de la misión.")
-    cols[2].metric("Tareas falladas", failed,
-                   delta=None if failed == 0 else f"-{failed}", delta_color="inverse",
-                   help="Tareas que no se completaron a tiempo (deadline perdido).")
-    cols[3].metric("Agentes perdidos", f"{m['agents_total'] - m['agents_alive']}/{m['agents_total']}",
-                   help="Unidades que se perdieron durante la misión.")
-    cols[4].metric("Reasignaciones", int(m["reassignments"]),
-                   help="Veces que el comandante movió una tarea a otra unidad tras "
-                        "perder a la asignada. Es la 'reorganización' en acción.")
+    if scenario.revisit_every:  # persistent monitoring -> coverage, not completion
+        services = sum(1 for e in rec.events if e["type"] == "task.completed")
+        cols[0].metric("Cobertura media", f"{_mean_coverage(rec) * 100:.0f}%",
+                       help="Media en el tiempo de los puntos que estaban 'frescos' "
+                            "(servidos dentro de su ventana de revisita).")
+        cols[1].metric("Servicios", services,
+                       help="Total de veces que se revisitó/atendió un punto.")
+        cols[2].metric("Puntos", int(m["tasks_total"]))
+        cols[3].metric("Agentes perdidos", lost_txt)
+        cols[4].metric("Reasignaciones", int(m["reassignments"]))
+    else:
+        failed = int(m.get("tasks_failed", 0))
+        cols[0].metric("Misión completada", f"{m['mission_completion'] * 100:.0f}%",
+                       help="Porcentaje de tareas completadas, ponderado por prioridad "
+                            "(las urgentes pesan más).")
+        cols[1].metric("Tareas hechas", f"{m['tasks_done']}/{m['tasks_total']}",
+                       help="Tareas completadas sobre el total de la misión.")
+        cols[2].metric("Tareas falladas", failed,
+                       delta=None if failed == 0 else f"-{failed}", delta_color="inverse",
+                       help="Tareas que no se completaron a tiempo (deadline perdido).")
+        cols[3].metric("Agentes perdidos", lost_txt,
+                       help="Unidades que se perdieron durante la misión.")
+        cols[4].metric("Reasignaciones", int(m["reassignments"]),
+                       help="Veces que el comandante movió una tarea a otra unidad tras "
+                            "perder a la asignada. Es la 'reorganización' en acción.")
 
     st.markdown("##### ▶ Pulsa **Reproducir** sobre el mapa para ver la misión en vivo "
                 "(el HUD de arriba se actualiza solo)")
@@ -1025,12 +1065,19 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         "cerebro del comandante** (la estrategia). Como es 100% determinista, la única "
         "diferencia en el resultado es el algoritmo: la comparación es **justa**."
     )
-    st.info(
-        "**Lo que se mide → «misión completada (%)»**: el porcentaje de tareas "
-        "resueltas, *ponderado por prioridad* (perder una tarea VITAL pesa mucho más "
-        "que una LOW). Más alto = mejor coordinación. La pregunta no es académica: "
-        "es *cuántos objetivos salva cada forma de mandar a la flota*."
-    )
+    recurring = scenario.revisit_every > 0
+    if recurring:
+        st.info(
+            "**Lo que se mide → «cobertura media (%)»**: en este escenario los puntos "
+            "hay que *revisitarlos* periódicamente o caducan, así que la métrica es "
+            "qué fracción del campo se mantuvo *fresca* de media. Más alto = mejor "
+            "cobertura sostenida.")
+    else:
+        st.info(
+            "**Lo que se mide → «misión completada (%)»**: el porcentaje de tareas "
+            "resueltas, *ponderado por prioridad* (perder una tarea VITAL pesa mucho más "
+            "que una LOW). Más alto = mejor coordinación. La pregunta no es académica: "
+            "es *cuántos objetivos salva cada forma de mandar a la flota*.")
     with st.expander("¿Qué hace cada estrategia?"):
         st.markdown(
             "- **greedy** — cada unidad va a la mejor tarea más cercana (decisión local).\n"
@@ -1045,36 +1092,42 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         return
     with st.spinner("Corriendo " + " / ".join(STRATEGIES) + "…"):
         recs = {name: run_scenario(scenario, name, replan=replan) for name in STRATEGIES}
-    results = sorted(
-        (StrategyResult.from_recording(recs[n]) for n in STRATEGIES),
-        key=lambda r: (-r.completion, r.ticks_to_finish or 10**9, r.reassignments),
-    )
-    opt = recs["optimal"].final_metrics["mission_completion"] or 1e-9
 
-    st.success("🏆 " + _interpret_compare(results, opt))
+    def _val(r: StrategyResult) -> float:
+        return r.mean_coverage if recurring else r.completion
 
+    if recurring:
+        results = sorted((StrategyResult.from_recording(recs[n]) for n in STRATEGIES),
+                         key=lambda r: (-r.mean_coverage, r.reassignments))
+    else:
+        results = sorted((StrategyResult.from_recording(recs[n]) for n in STRATEGIES),
+                         key=lambda r: (-r.completion, r.ticks_to_finish or 10**9, r.reassignments))
+    opt = (_mean_coverage(recs["optimal"]) if recurring
+           else recs["optimal"].final_metrics["mission_completion"]) or 1e-9
+
+    st.success("🏆 " + _interpret_compare(results, opt, recurring))
+
+    metric_name = "cobertura" if recurring else "misión"
     bar = go.Figure(go.Bar(
-        x=[r.strategy for r in results], y=[r.completion * 100 for r in results],
+        x=[r.strategy for r in results], y=[_val(r) * 100 for r in results],
         marker_color=_RANK_COLORS[: len(results)],
-        text=[f"{r.completion*100:.0f}%<br><span style='font-size:10px'>"
-              f"{r.tasks_failed} falladas</span>" for r in results],
-        textposition="outside",
+        text=[f"{_val(r)*100:.0f}%" for r in results], textposition="outside",
     ))
     bar.update_layout(
-        title="Misión completada por estrategia (más alto = mejor)", height=340,
+        title=f"{metric_name.capitalize()} por estrategia (más alto = mejor)", height=340,
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
-        yaxis=dict(range=[0, 112], title="misión %  (ponderado por prioridad)",
-                   gridcolor="#1c2230"),
+        yaxis=dict(range=[0, 112], title=f"{metric_name} %", gridcolor="#1c2230"),
     )
     st.plotly_chart(bar, use_container_width=True)
-    st.caption("Altura de la barra = % de la misión que esa estrategia logró salvar.")
+    st.caption(f"Altura de la barra = {metric_name} media que logró esa estrategia.")
 
     # how each strategy progresses over time — not just the endpoint
+    col_metric = "coverage" if recurring else "mission_completion"
     lines = go.Figure()
     for name in STRATEGIES:
         h = pd.DataFrame(recs[name].metrics_history)
         lines.add_trace(go.Scatter(
-            x=h["tick"], y=h["mission_completion"] * 100, name=name,
+            x=h["tick"], y=h[col_metric] * 100, name=name,
             line=dict(color=_STRAT_COLOR.get(name, "#cccccc"), width=2)))
     if scenario.shock_tick is not None:
         lines.add_vline(x=scenario.shock_tick, line=dict(color="#e0484f", width=1, dash="dash"),
@@ -1084,31 +1137,34 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
         legend=dict(orientation="h", y=1.12, font=dict(size=10)),
         xaxis=dict(title="tick (paso de tiempo)", gridcolor="#1c2230"),
-        yaxis=dict(title="misión %", range=[0, 105], gridcolor="#1c2230"))
+        yaxis=dict(title=f"{metric_name} %", range=[0, 105], gridcolor="#1c2230"))
     st.plotly_chart(lines, use_container_width=True)
-    st.caption("Cada línea es una estrategia. Fíjate en la **raya roja** (la onda de "
-               "choque): ahí todas caen o se estancan, y se ve **quién se reorganiza "
-               "antes y llega más alto**.")
+    st.caption("Cada línea es una estrategia a lo largo del tiempo; se ve **quién llega "
+               "más alto y se mantiene**.")
 
     st.markdown("**Detalle por estrategia** (ordenado de mejor a peor):")
-    df = pd.DataFrame([
-        {
-            "estrategia": r.strategy,
-            "misión %": round(r.completion * 100, 1),
-            "% del óptimo": round(r.completion / opt * 100),
-            "tareas hechas": f"{r.tasks_done}/{r.tasks_total}",
-            "falladas": r.tasks_failed,
-            "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
-            "agentes perdidos": r.agents_lost,
-            "reasignaciones": r.reassignments,
-        }
-        for r in results
-    ])
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    st.caption("**misión %** = cuánto salvó · **% del óptimo** = respecto al máximo "
-               "posible por tick (>100% significa que batió al óptimo *miope* mirando "
-               "plazos) · **falladas** = tareas perdidas por deadline · **ticks** = en "
-               "cuántos pasos cerró · **reasignaciones** = veces que reorganizó la flota.")
+    if recurring:
+        df = pd.DataFrame([
+            {"estrategia": r.strategy, "cobertura %": round(r.mean_coverage * 100, 1),
+             "% del óptimo": round(r.mean_coverage / opt * 100),
+             "agentes perdidos": r.agents_lost, "reasignaciones": r.reassignments}
+            for r in results])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.caption("**cobertura %** = fracción media del campo mantenida fresca · "
+                   "**% del óptimo** = respecto a la mejor estrategia (optimal).")
+    else:
+        df = pd.DataFrame([
+            {"estrategia": r.strategy, "misión %": round(r.completion * 100, 1),
+             "% del óptimo": round(r.completion / opt * 100),
+             "tareas hechas": f"{r.tasks_done}/{r.tasks_total}", "falladas": r.tasks_failed,
+             "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
+             "agentes perdidos": r.agents_lost, "reasignaciones": r.reassignments}
+            for r in results])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.caption("**misión %** = cuánto salvó · **% del óptimo** = respecto al máximo "
+                   "posible por tick (>100% significa que batió al óptimo *miope* mirando "
+                   "plazos) · **falladas** = tareas perdidas por deadline · **ticks** = en "
+                   "cuántos pasos cerró · **reasignaciones** = veces que reorganizó la flota.")
 
     st.markdown(
         "> **El sentido de todo esto:** no hay un ganador universal. La mejor forma de "
@@ -1119,10 +1175,17 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
     )
 
 
-def _interpret_compare(results: list, opt: float) -> str:
+def _interpret_compare(results: list, opt: float, recurring: bool = False) -> str:
     """One-sentence plain-language read of the comparison."""
-    win, worst = results[0], results[-1]
+    win = results[0]
     by = {r.strategy: r for r in results}
+    if recurring:
+        parts = [f"Ganó **{win.strategy}** (cobertura media {win.mean_coverage*100:.0f}%)."]
+        if "greedy" in by and by["greedy"].strategy != win.strategy:
+            parts.append(f"**greedy** es la peor ({by['greedy'].mean_coverage*100:.0f}%): "
+                         "deja caducar los puntos lejanos.")
+        parts.append("Mantener cobertura premia repartir bien el campo, no ir a lo más cercano.")
+        return " ".join(parts)
     parts = [f"Ganó **{win.strategy}** ({win.completion*100:.0f}%)."]
     if "greedy" in by and by["greedy"].strategy != win.strategy:
         g = by["greedy"]

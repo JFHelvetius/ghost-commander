@@ -60,6 +60,11 @@ class Task:
     # precedence: ids of tasks that must be DONE before this one can start. While
     # any prerequisite is unmet the task is *locked* (not assignable, can't fail).
     requires: tuple[int, ...] = ()
+    # recurring (persistent monitoring): if set, the point must be re-serviced
+    # every ``revisit_every`` ticks — once done it returns to PENDING after that
+    # interval. The objective becomes maintaining coverage, not finishing.
+    revisit_every: int | None = None
+    last_service_tick: int | None = None
     # bookkeeping
     remaining: float = field(default=0.0)
     created_tick: int = 0
@@ -98,6 +103,13 @@ class Task:
     def is_overdue(self, tick: int) -> bool:
         return self.deadline_tick is not None and tick > self.deadline_tick
 
+    def is_fresh(self, tick: int) -> bool:
+        """For a recurring point: serviced within the last ``revisit_every`` ticks."""
+        if self.revisit_every is None:
+            return True
+        return (self.last_service_tick is not None
+                and tick - self.last_service_tick <= self.revisit_every)
+
     def slack(self, tick: int) -> int | None:
         """Ticks remaining until the deadline (negative once overdue)."""
         return None if self.deadline_tick is None else self.deadline_tick - tick
@@ -116,6 +128,7 @@ class Task:
             "required_skills": list(self.required_skills),
             "required_agents": self.required_agents,
             "requires": list(self.requires),
+            "revisit_every": self.revisit_every,
         }
 
 

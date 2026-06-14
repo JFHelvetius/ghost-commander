@@ -335,3 +335,35 @@ def test_phased_has_dependencies_and_no_precedence_by_default() -> None:
     assert any(t.requires for t in phased.world.tasks.values())
     plain = Simulation(Scenario(seed=2, n_agents=20, n_tasks=15), "global")
     assert all(not t.requires for t in plain.world.tasks.values())
+
+
+def test_recurring_task_revives_after_revisit_interval() -> None:
+    from ghost_commander.domain import Task, TaskStatus, World
+
+    sim = Simulation(Scenario(seed=1, n_agents=1, n_tasks=1), "global")
+    world = World(width=10, height=10)
+    world.add_task(Task(id=0, x=0.0, y=0.0, revisit_every=10, workload=5.0))
+    sim.world = world
+    world.tasks[0].status = TaskStatus.DONE
+    world.tasks[0].done_tick = 100
+    sim._revive_recurring(105)  # not yet due
+    assert world.tasks[0].status is TaskStatus.DONE
+    sim._revive_recurring(110)  # 10 ticks later -> revives
+    assert world.tasks[0].status is TaskStatus.PENDING
+    assert world.tasks[0].remaining == 5.0
+
+
+def test_monitor_keeps_coverage_and_greedy_is_worst() -> None:
+    import statistics as st
+
+    def mean_cov(strat: str) -> float:
+        h = run_scenario(PRESETS["monitor"], strat).metrics_history
+        return st.mean(s["coverage"] for s in h)
+
+    greedy, triage = mean_cov("greedy"), mean_cov("triage")
+    assert 0.0 < greedy < triage  # coverage is partial, and greedy is worse
+
+
+def test_non_recurring_coverage_is_full() -> None:
+    rec = run_scenario(Scenario(seed=1, n_agents=40, n_tasks=20), "global")
+    assert all(s["coverage"] == 1.0 for s in rec.metrics_history)

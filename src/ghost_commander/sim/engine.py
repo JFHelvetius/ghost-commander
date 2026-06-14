@@ -131,6 +131,7 @@ class Simulation:
         self._advance_agents(tick)
         self._apply_failures(tick)
         self._expire_overdue(tick)
+        self._revive_recurring(tick)
         self._snapshot()
         if self._settled():
             self._finish(tick)
@@ -270,6 +271,7 @@ class Simulation:
         task.remaining = 0.0
         task.status = TaskStatus.DONE
         task.done_tick = tick
+        task.last_service_tick = tick  # for recurring coverage / freshness
         freed = sorted(task.assigned)
         for aid in freed:
             ag = self.world.agents[aid]
@@ -346,6 +348,17 @@ class Simulation:
     @property
     def _arrivals_pending(self) -> bool:
         return self._next_arrival < len(self._arrivals)
+
+    def _revive_recurring(self, tick: int) -> None:
+        """Persistent monitoring: a recurring point that was serviced ``revisit_every``
+        ticks ago returns to the pool, so coverage must be actively maintained."""
+        for task in self.world.tasks.values():
+            if (task.revisit_every is not None and task.status is TaskStatus.DONE
+                    and task.done_tick is not None
+                    and tick - task.done_tick >= task.revisit_every):
+                task.status = TaskStatus.PENDING
+                task.remaining = task.workload
+                task.done_tick = None
 
     def _expire_overdue(self, tick: int) -> None:
         """Fail any open task whose deadline has passed — a mission loss.
