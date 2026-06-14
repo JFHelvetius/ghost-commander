@@ -785,17 +785,30 @@ _STRAT_COLOR = {
 
 
 def _render_compare(scenario: Scenario, replan: bool = False) -> None:
+    st.markdown("### ¿Qué forma de coordinar salva más misión?")
     st.markdown(
-        "**¿La forma de repartir el trabajo cambia el resultado?** Corremos la "
-        f"**misma misión** (escenario **{scenario.name}**, {scenario.n_agents} agentes"
-        f"{', con re-planificación' if replan else ''}) con cada estrategia. Como todo "
-        "es determinista, lo único que cambia es el algoritmo — la diferencia es justa.\n\n"
-        "- **greedy**: la tarea buena más cercana (decisión local).\n"
-        "- **auction / global**: reparten mirando a toda la flota.\n"
-        "- **triage**: además mira los *plazos*.\n"
-        "- **optimal**: el óptimo exacto por tick (techo de referencia)."
+        f"Corremos la **misma misión exacta** — mismo mapa, mismos fallos, misma onda "
+        f"de choque, misma seed (escenario **{scenario.name}**, {scenario.n_agents} "
+        f"agentes{', re-planificación ON' if replan else ''}) — y **solo cambiamos el "
+        "cerebro del comandante** (la estrategia). Como es 100% determinista, la única "
+        "diferencia en el resultado es el algoritmo: la comparación es **justa**."
     )
-    if not st.button(f"▶ Comparar las {len(STRATEGIES)} estrategias",
+    st.info(
+        "**Lo que se mide → «misión completada (%)»**: el porcentaje de tareas "
+        "resueltas, *ponderado por prioridad* (perder una tarea VITAL pesa mucho más "
+        "que una LOW). Más alto = mejor coordinación. La pregunta no es académica: "
+        "es *cuántos objetivos salva cada forma de mandar a la flota*."
+    )
+    with st.expander("¿Qué hace cada estrategia?"):
+        st.markdown(
+            "- **greedy** — cada unidad va a la mejor tarea más cercana (decisión local).\n"
+            "- **auction / global** — reparten mirando a toda la flota a la vez.\n"
+            "- **triage** — como global, pero además tiene en cuenta los *plazos*.\n"
+            "- **optimal** — el óptimo exacto por tick (algoritmo húngaro): el **techo** "
+            "de referencia para ese objetivo."
+        )
+
+    if not st.button(f"▶ Comparar las {len(STRATEGIES)} estrategias en este escenario",
                      type="primary", use_container_width=True):
         return
     with st.spinner("Corriendo " + " / ".join(STRATEGIES) + "…"):
@@ -806,20 +819,7 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
     )
     opt = recs["optimal"].final_metrics["mission_completion"] or 1e-9
 
-    df = pd.DataFrame([
-        {
-            "estrategia": r.strategy,
-            "misión %": round(r.completion * 100, 1),
-            "% del óptimo": round(r.completion / opt * 100),
-            "tareas": f"{r.tasks_done}/{r.tasks_total}",
-            "falladas": r.tasks_failed,
-            "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
-            "perdidos": r.agents_lost,
-            "reasign.": r.reassignments,
-        }
-        for r in results
-    ])
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.success("🏆 " + _interpret_compare(results, opt))
 
     bar = go.Figure(go.Bar(
         x=[r.strategy for r in results], y=[r.completion * 100 for r in results],
@@ -829,11 +829,13 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         textposition="outside",
     ))
     bar.update_layout(
-        title="Éxito de misión por estrategia (ponderado por prioridad)", height=340,
+        title="Misión completada por estrategia (más alto = mejor)", height=340,
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
-        yaxis=dict(range=[0, 112], title="misión %", gridcolor="#1c2230"),
+        yaxis=dict(range=[0, 112], title="misión %  (ponderado por prioridad)",
+                   gridcolor="#1c2230"),
     )
     st.plotly_chart(bar, use_container_width=True)
+    st.caption("Altura de la barra = % de la misión que esa estrategia logró salvar.")
 
     # how each strategy progresses over time — not just the endpoint
     lines = go.Figure()
@@ -846,14 +848,43 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         lines.add_vline(x=scenario.shock_tick, line=dict(color="#e0484f", width=1, dash="dash"),
                         annotation_text="shock", annotation_font_color="#e0484f")
     lines.update_layout(
-        title="Progreso de misión en el tiempo (cómo llega cada una)", height=320,
+        title="Progreso en el tiempo: cómo llega cada una al resultado", height=320,
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
         legend=dict(orientation="h", y=1.12, font=dict(size=10)),
-        xaxis=dict(title="tick", gridcolor="#1c2230"),
+        xaxis=dict(title="tick (paso de tiempo)", gridcolor="#1c2230"),
         yaxis=dict(title="misión %", range=[0, 105], gridcolor="#1c2230"))
     st.plotly_chart(lines, use_container_width=True)
+    st.caption("Cada línea es una estrategia. Fíjate en la **raya roja** (la onda de "
+               "choque): ahí todas caen o se estancan, y se ve **quién se reorganiza "
+               "antes y llega más alto**.")
 
-    st.success("🏆 " + _interpret_compare(results, opt))
+    st.markdown("**Detalle por estrategia** (ordenado de mejor a peor):")
+    df = pd.DataFrame([
+        {
+            "estrategia": r.strategy,
+            "misión %": round(r.completion * 100, 1),
+            "% del óptimo": round(r.completion / opt * 100),
+            "tareas hechas": f"{r.tasks_done}/{r.tasks_total}",
+            "falladas": r.tasks_failed,
+            "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
+            "agentes perdidos": r.agents_lost,
+            "reasignaciones": r.reassignments,
+        }
+        for r in results
+    ])
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.caption("**misión %** = cuánto salvó · **% del óptimo** = respecto al máximo "
+               "posible por tick (>100% significa que batió al óptimo *miope* mirando "
+               "plazos) · **falladas** = tareas perdidas por deadline · **ticks** = en "
+               "cuántos pasos cerró · **reasignaciones** = veces que reorganizó la flota.")
+
+    st.markdown(
+        "> **El sentido de todo esto:** no hay un ganador universal. La mejor forma de "
+        "coordinar **depende de la situación** — `greedy` se hunde bajo presión, "
+        "`triage` brilla cuando los plazos aprietan, `optimal` marca el techo por tick "
+        "pero es miope. Cambia de **escenario** en la barra lateral y vuelve a comparar: "
+        "ese es justo el problema que resuelve un comandante de verdad."
+    )
 
 
 def _interpret_compare(results: list, opt: float) -> str:
