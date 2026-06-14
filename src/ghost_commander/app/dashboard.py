@@ -64,6 +64,28 @@ _PRIORITY_SIZE = {1: 9, 2: 12, 3: 15, 4: 19, 5: 24}
 # Rank colors for the strategy comparison (winner -> worst).
 _RANK_COLORS = ["#27d17c", "#7fcf7a", "#f4b942", "#e0484f"]
 
+
+def _lerp_color(c1: tuple[int, int, int], c2: tuple[int, int, int], t: float) -> str:
+    t = max(0.0, min(1.0, t))
+    return "rgb({},{},{})".format(*(int(c1[j] + (c2[j] - c1[j]) * t) for j in range(3)))
+
+
+def _hud_annotations(m: dict, shock: bool) -> list[dict]:
+    """A heads-up display baked into each animation frame (updates as it plays)."""
+    txt = (f"tick <b>{int(m['tick'])}</b>   ·   misión <b>{m['mission_completion']*100:.0f}%</b>"
+           f"   ·   agentes <b>{int(m['agents_alive'])}/{int(m['agents_total'])}</b>"
+           f"   ·   tareas <b>{int(m['tasks_done'])}/{int(m['tasks_total'])}</b>")
+    anns = [dict(x=0.012, y=0.985, xref="paper", yref="paper", xanchor="left", yanchor="top",
+                 text=txt, showarrow=False, align="left",
+                 font=dict(color="#e6ebf3", size=14),
+                 bgcolor="rgba(12,15,22,0.78)", bordercolor="#27d17c", borderwidth=1,
+                 borderpad=7)]
+    if shock:
+        anns.append(dict(x=0.5, y=0.55, xref="paper", yref="paper", xanchor="center",
+                         yanchor="middle", text="⚡ ONDA DE CHOQUE", showarrow=False,
+                         font=dict(color="#ff5a60", size=34), opacity=0.9))
+    return anns
+
 _SCENARIO_DESC = {
     "default": "Flota amplia, onda de choque a mitad de misión. Las 3 estrategias "
                "completan; la diferencia es de velocidad.",
@@ -146,13 +168,17 @@ def _frame_scatters(
             tcol.append("#f4b942"); tsize.append(8); topac.append(0); ttxt.append("")
             continue
         status = t["status"]
+        prog = float(t.get("progress", 0.0))
         tx_.append(t["x"]); ty_.append(t["y"])
         if status == "done":
-            tsym.append("square-open"); tcol.append("#36507a"); topac.append(0.9)
+            tsym.append("square"); tcol.append("#2a6b48"); topac.append(0.85)
         elif status == "failed":
             tsym.append("x-thin"); tcol.append("#e0484f"); topac.append(1.0)
         else:
-            tsym.append("square"); tcol.append("#f4b942"); topac.append(0.55)
+            # being worked: amber -> green as it fills, brightening with progress
+            tsym.append("square")
+            tcol.append(_lerp_color((244, 185, 66), (39, 209, 124), prog))
+            topac.append(0.5 + 0.5 * prog)
         tsize.append(_PRIORITY_SIZE.get(t["priority"], 12))
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
@@ -179,7 +205,7 @@ def _frame_scatters(
         ax.append(a["x"]); ay.append(a["y"])
         col = _STATUS_COLOR.get(st_, "#cccccc")
         core_c.append(col); halo_c.append(col)
-        base_s = 9.0 + 3.0 * float(a["resources"])
+        base_s = 11.0 + 4.0 * float(a["resources"])  # bigger, clearer drones
         if st_ == "moving" and aid in prev_pos:
             px, py = prev_pos[aid]
             dx, dy = a["x"] - px, a["y"] - py
@@ -191,7 +217,7 @@ def _frame_scatters(
             syms.append("diamond"); angs.append(0)
         else:
             syms.append("circle"); angs.append(0)
-        core_s.append(base_s); halo_s.append(base_s + 12)
+        core_s.append(base_s); halo_s.append(base_s + 15)
         htxt.append(f"agente {a['id']} · {st_} · recursos {int(a['resources']*100)}%"
                     + (f" · {a['skill']}" if a.get("skill") else ""))
     traces.append(go.Scattergl(  # soft glow underneath
@@ -208,7 +234,7 @@ def _frame_scatters(
 
 
 def _animated_map_figure(rec: RunRecording, width: float, height: float,
-                         frame_ms: int = 130) -> go.Figure:
+                         frame_ms: int = 130, shock_tick: int | None = None) -> go.Figure:
     """A play-able, scrubbable map: watch the fleet glide, fail and reorganize."""
     n = len(rec.frames)
     step = max(1, -(-n // 240))  # ceil division -> <= 240 frames
@@ -223,12 +249,17 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float,
     def _pos(i: int) -> dict[int, tuple[float, float]]:
         return {a["id"]: (a["x"], a["y"]) for a in rec.frames[i]["world"]["agents"]}
 
+    def _is_shock(i: int) -> bool:
+        return shock_tick is not None and shock_tick <= i <= shock_tick + 1
+
     prev: dict[int, tuple[float, float]] = {}
     base = _frame_scatters(rec.frames[idxs[0]], prev, agent_ids, task_ids)
     frames = []
     for i in idxs:
-        frames.append(go.Frame(data=_frame_scatters(rec.frames[i], prev, agent_ids, task_ids),
-                               name=str(i)))
+        frames.append(go.Frame(
+            data=_frame_scatters(rec.frames[i], prev, agent_ids, task_ids), name=str(i),
+            layout=go.Layout(annotations=_hud_annotations(rec.frames[i]["metrics"], _is_shock(i))),
+        ))
         prev = _pos(i)
 
     # WebGL (Scattergl) renders fast and uniformly, so frame == transition gives
@@ -243,9 +274,10 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float,
 
     fig = go.Figure(data=base, frames=frames)
     fig.update_layout(
-        height=600, margin=dict(l=8, r=8, t=8, b=8),
+        height=720, margin=dict(l=8, r=8, t=8, b=8),
         plot_bgcolor="#0b0e14", paper_bgcolor=_BG, font=dict(color=_FG),
         showlegend=False,
+        annotations=_hud_annotations(rec.frames[idxs[0]]["metrics"], _is_shock(idxs[0])),
         xaxis=dict(range=[0, width], showgrid=True, gridcolor="rgba(80,110,150,0.07)",
                    zeroline=False, showticklabels=False, ticks="", dtick=width / 12),
         yaxis=dict(range=[0, height], showgrid=True, gridcolor="rgba(80,110,150,0.07)",
@@ -545,31 +577,36 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
                    help="Veces que el comandante movió una tarea a otra unidad tras "
                         "perder a la asignada. Es la 'reorganización' en acción.")
 
-    st.markdown("##### ▶ Pulsa **Reproducir** para ver la misión en movimiento")
+    st.markdown("##### ▶ Pulsa **Reproducir** sobre el mapa para ver la misión en vivo "
+                "(el HUD de arriba se actualiza solo)")
+    # Map full width so each drone is clearly visible.
+    st.plotly_chart(
+        _animated_map_figure(rec, _world_w(rec), _world_h(rec),
+                             frame_ms=int(st.session_state.get("play_ms", 130)),
+                             shock_tick=scenario.shock_tick),
+        use_container_width=True,
+    )
+    st.caption("**Drones** (color = qué hacen, forma = ▲ en ruta / ◆ en una tarea / "
+               "● libre, tamaño = recursos): 🟩 trabajando · 🟦 yendo · ⬜ libre · "
+               "🟪 recargando. **Tareas**: cuadrados que pasan de 🟧 ámbar a 🟩 verde "
+               "según se completan · ✖️ roja = fallada · 🔷 = base. Las líneas azules "
+               "son las asignaciones del comandante.")
+
     left, right = st.columns([3, 2])
     with left:
-        st.plotly_chart(
-            _animated_map_figure(rec, _world_w(rec), _world_h(rec),
-                                 frame_ms=int(st.session_state.get("play_ms", 130))),
-            use_container_width=True,
-        )
-        st.caption("**Agentes** (color=qué hacen, forma=▲ se mueve / ◆ en tarea / "
-                   "● libre): 🟩 trabajando · 🟦 en ruta · ⬜ libre · 🟪 recargando. "
-                   "**Tareas**: 🟧 pendiente · ▫️ hecha · ✖️ fallada · 🔷 base. "
-                   "Las líneas azules son las asignaciones del comandante: míralas "
-                   "**reorganizarse** tras el shock.")
-    with right:
         st.markdown("**Progreso a lo largo del tiempo**")
         st.plotly_chart(
             _progress_figure(rec, len(rec.frames) - 1, scenario.shock_tick),
             use_container_width=True,
         )
         st.caption("Verde = % de misión · azul = flota viva · raya roja = onda de choque.")
-        with st.expander("Ver registro de eventos"):
-            ev = pd.DataFrame(rec.events)
-            if not ev.empty:
-                notable = ev[ev["severity"].isin(["WARN", "ERROR", "CRITICAL", "INFO"])]
-                st.dataframe(notable.tail(200), use_container_width=True, height=240)
+    with right:
+        st.markdown("**Registro de eventos**")
+        ev = pd.DataFrame(rec.events)
+        if not ev.empty:
+            notable = ev[ev["severity"].isin(["WARN", "ERROR", "CRITICAL", "INFO"])]
+            st.dataframe(notable.tail(200), use_container_width=True, height=300,
+                         hide_index=True)
 
 
 def _render_compare(scenario: Scenario) -> None:
