@@ -102,7 +102,7 @@ def _frame_scatters(
     prev_pos: dict[int, tuple[float, float]],
     agent_ids: list[int],
     task_ids: list[int],
-) -> list[go.Scatter]:
+) -> list[go.Scattergl]:
     world = frame["world"]
     amap = {a["id"]: a for a in world["agents"]}
     tmap = {t["id"]: t for t in world["tasks"]}
@@ -122,13 +122,13 @@ def _frame_scatters(
         else:
             lx += [None, None, None]
             ly += [None, None, None]
-    traces: list[go.Scatter] = [go.Scatter(
+    traces: list[go.Scattergl] = [go.Scattergl(
         x=lx, y=ly, mode="lines", name="asignaciones",
         line=dict(color="rgba(58,160,255,0.12)", width=1), hoverinfo="skip",
         showlegend=False,
     )]
 
-    traces.append(go.Scatter(
+    traces.append(go.Scattergl(
         x=[b[0] for b in bases], y=[b[1] for b in bases], mode="markers", name="bases",
         marker=dict(symbol="diamond-wide", size=16, color="#19c3d6",
                     line=dict(width=1, color="#bdf3fa")),
@@ -157,7 +157,7 @@ def _frame_scatters(
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
                     + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else ""))
-    traces.append(go.Scatter(
+    traces.append(go.Scattergl(
         x=tx_, y=ty_, mode="markers", name="tareas", showlegend=False,
         marker=dict(symbol=tsym, size=tsize, color=tcol, opacity=topac,
                     line=dict(width=1, color=tcol)),
@@ -194,11 +194,11 @@ def _frame_scatters(
         core_s.append(base_s); halo_s.append(base_s + 12)
         htxt.append(f"agente {a['id']} · {st_} · recursos {int(a['resources']*100)}%"
                     + (f" · {a['skill']}" if a.get("skill") else ""))
-    traces.append(go.Scatter(  # soft glow underneath
+    traces.append(go.Scattergl(  # soft glow underneath
         x=ax, y=ay, mode="markers", name="halo", showlegend=False, hoverinfo="skip",
         marker=dict(size=halo_s, color=halo_c, opacity=0.15, line=dict(width=0)),
     ))
-    traces.append(go.Scatter(  # crisp shaped core on top
+    traces.append(go.Scattergl(  # crisp shaped core on top
         x=ax, y=ay, mode="markers", name="agentes", showlegend=False,
         marker=dict(size=core_s, color=core_c, symbol=syms, angle=angs,
                     line=dict(width=0.7, color="rgba(255,255,255,0.4)")),
@@ -230,12 +230,12 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
                                name=str(i)))
         prev = _pos(i)
 
-    # frame duration > transition duration leaves the browser slack to finish
-    # each redraw before the next starts -> no runaway / "crazy" catch-up jumps.
+    # WebGL (Scattergl) renders fast and uniformly, so frame == transition gives
+    # constant-velocity gliding (no speed-up once the fleet thins after the shock).
     play = dict(label="▶ Reproducir", method="animate",
-                args=[None, {"frame": {"duration": 200, "redraw": True},
+                args=[None, {"frame": {"duration": 130, "redraw": True},
                              "fromcurrent": True,
-                             "transition": {"duration": 140, "easing": "linear"}}])
+                             "transition": {"duration": 130, "easing": "linear"}}])
     pause = dict(label="⏸ Pausa", method="animate",
                  args=[[None], {"frame": {"duration": 0, "redraw": False},
                                 "mode": "immediate"}])
@@ -256,7 +256,7 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
             font=dict(color="#e6ebf3"), buttons=[play, pause],
         )],
         sliders=[dict(
-            active=len(idxs) - 1, x=0.0, len=1.0, y=-0.02, pad=dict(t=6),
+            active=0, x=0.0, len=1.0, y=-0.02, pad=dict(t=6),
             currentvalue=dict(prefix="paso ", font=dict(color=_FG, size=12)),
             font=dict(size=9, color="#9aa6b8"),
             transition={"duration": 0},
@@ -272,16 +272,16 @@ def _progress_figure(rec: RunRecording, tick: int, shock_tick: int | None) -> go
     hist = pd.DataFrame(rec.metrics_history)
     total_agents = hist["agents_total"].iloc[0] if len(hist) else 1
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scattergl(
         x=hist["tick"], y=hist["mission_completion"] * 100, name="misión %",
         line=dict(color="#27d17c", width=2),
     ))
-    fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scattergl(
         x=hist["tick"], y=hist["agents_alive"] / max(total_agents, 1) * 100,
         name="flota viva %", line=dict(color="#3aa0ff", width=2),
     ))
     if "tasks_failed" in hist and hist["tasks_failed"].max() > 0:
-        fig.add_trace(go.Scatter(
+        fig.add_trace(go.Scattergl(
             x=hist["tick"], y=hist["tasks_failed"], name="tareas falladas",
             line=dict(color="#e0484f", width=1.5, dash="dot"), yaxis="y2",
         ))
