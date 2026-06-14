@@ -36,6 +36,20 @@ def can_handle(agent: Agent, task: Task) -> bool:
     return agent.has_skill(task.required_skill)
 
 
+def can_fill(slots: list[str | None], agent: Agent) -> bool:
+    """Whether ``agent`` can take some still-open ``slot`` (``None`` = any skill)."""
+    return any(s is None or s in agent.skills for s in slots)
+
+
+def fill_slot(slots: list[str | None], agent: Agent) -> bool:
+    """Consume the first slot ``agent`` can fill (mutates ``slots``); True if filled."""
+    for i, s in enumerate(slots):
+        if s is None or s in agent.skills:
+            slots.pop(i)
+            return True
+    return False
+
+
 @runtime_checkable
 class CoordinationStrategy(Protocol):
     name: str
@@ -64,7 +78,7 @@ def urgency_score(agent: Agent, task: Task, tick: int) -> float:
     strategy and the engine's continuous re-planner so both rank the same way.
     """
     distance = agent.distance_to(task.x, task.y)
-    base = priority_weight(task.priority) / (distance + _EPS)
+    base = priority_weight(task.priority_at(tick)) / (distance + _EPS)
     if task.deadline_tick is None:
         return base
     travel = math.ceil(distance / max(agent.speed, _EPS))
@@ -79,7 +93,9 @@ def urgency_score(agent: Agent, task: Task, tick: int) -> float:
 __all__ = [
     "Assignment",
     "CoordinationStrategy",
+    "can_fill",
     "can_handle",
+    "fill_slot",
     "priority_weight",
     "urgency_score",
 ]

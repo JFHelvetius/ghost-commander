@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import _hungarian
-from .base import Assignment, can_handle, priority_weight
+from .base import Assignment, priority_weight
 from .global_opt import GlobalStrategy
 
 if TYPE_CHECKING:
@@ -42,14 +42,14 @@ class OptimalStrategy:
         if not agents or not tasks:
             return []
 
-        # expand each task into one column per free slot
-        slots: list[int] = []  # task id per column
+        # expand each task into one column per still-needed slot (skill or None)
+        cols: list[tuple[int, str | None]] = []  # (task id, required skill) per column
         for task in sorted(tasks, key=lambda t: t.id):
-            slots.extend([task.id] * (task.required_agents - len(task.assigned)))
-        if not slots:
+            cols.extend((task.id, skill) for skill in world.needed_slots(task))
+        if not cols:
             return []
 
-        n = max(len(agents), len(slots))
+        n = max(len(agents), len(cols))
         if n > _MAX_N:
             return self._fallback.assign(world)
 
@@ -58,12 +58,13 @@ class OptimalStrategy:
         profit = [[0.0] * n for _ in range(n)]
         max_p = _EPS
         for i, agent in enumerate(agents):
-            for j, tid in enumerate(slots):
-                task = tmap[tid]
-                if not can_handle(agent, task):
+            for j, (tid, skill) in enumerate(cols):
+                if skill is not None and skill not in agent.skills:
                     profit[i][j] = _INELIGIBLE
                     continue
-                p = priority_weight(task.priority) / (agent.distance_to(task.x, task.y) + _EPS)
+                task = tmap[tid]
+                p = priority_weight(task.priority_at(world.tick)) / (
+                    agent.distance_to(task.x, task.y) + _EPS)
                 profit[i][j] = p
                 if p > max_p:
                     max_p = p
@@ -75,8 +76,8 @@ class OptimalStrategy:
         assignments: list[Assignment] = []
         for i, agent in enumerate(agents):
             j = row_to_col[i]
-            if j < len(slots) and profit[i][j] > 0.0:  # real, eligible, beneficial
-                assignments.append((agent.id, slots[j]))
+            if j < len(cols) and profit[i][j] > 0.0:  # real, eligible, beneficial
+                assignments.append((agent.id, cols[j][0]))
         return assignments
 
 

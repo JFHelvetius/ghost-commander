@@ -51,6 +51,12 @@ class Task:
     # agent qualifies. Lets the commander reason about *which kind* of agent,
     # not just which is nearest.
     required_skill: str | None = None
+    # mix of specialists: when set, the task needs ONE agent of EACH listed skill
+    # present at once (e.g. ("recon", "medical")). Supersedes required_skill.
+    required_skills: tuple[str, ...] = ()
+    # dynamic priority: every ``escalate_every`` ticks it lingers, its effective
+    # priority rises by one (capped at VITAL). None = static priority.
+    escalate_every: int | None = None
     # bookkeeping
     remaining: float = field(default=0.0)
     created_tick: int = 0
@@ -60,6 +66,17 @@ class Task:
     def __post_init__(self) -> None:
         if self.remaining == 0.0:
             self.remaining = self.workload
+        if self.required_skills and self.required_agents <= 1:
+            # a mixed task needs one agent per required skill
+            self.required_agents = len(self.required_skills)
+
+    def priority_at(self, tick: int) -> int:
+        """Effective priority at ``tick`` (rises as the task lingers, if enabled)."""
+        base = int(self.priority)
+        if self.escalate_every is None or self.escalate_every <= 0:
+            return base
+        bumps = max(0, tick - self.created_tick) // self.escalate_every
+        return min(int(TaskPriority.VITAL), base + bumps)
 
     @property
     def progress(self) -> float:
@@ -93,6 +110,7 @@ class Task:
             "assigned": sorted(self.assigned),
             "deadline_tick": self.deadline_tick,
             "required_skill": self.required_skill,
+            "required_skills": list(self.required_skills),
             "required_agents": self.required_agents,
         }
 

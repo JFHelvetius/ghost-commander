@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, can_handle, priority_weight
+from .base import Assignment, can_fill, fill_slot, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -32,16 +32,17 @@ class GlobalStrategy:
         if not agents or not tasks:
             return []
 
-        slots = {t.id: t.required_agents - len(t.assigned) for t in tasks}
+        needs = {t.id: world.needed_slots(t) for t in tasks}
+        amap = {a.id: a for a in agents}
 
-        # Full score table across every agent/task pair.
+        # Full score table across every agent/task pair the agent could fill.
         table: list[tuple[float, int, int]] = []  # (score, agent_id, task_id)
         for agent in agents:
             for task in tasks:
-                if not can_handle(agent, task):
+                if not can_fill(needs[task.id], agent):
                     continue
                 d = agent.distance_to(task.x, task.y)
-                score = priority_weight(task.priority) / (d + _EPS)
+                score = priority_weight(task.priority_at(world.tick)) / (d + _EPS)
                 table.append((score, agent.id, task.id))
 
         table.sort(key=lambda c: (-c[0], c[1], c[2]))
@@ -49,11 +50,12 @@ class GlobalStrategy:
         assignments: list[Assignment] = []
         used_agents: set[int] = set()
         for _score, agent_id, task_id in table:
-            if agent_id in used_agents or slots.get(task_id, 0) <= 0:
+            if agent_id in used_agents or not needs[task_id]:
+                continue
+            if not fill_slot(needs[task_id], amap[agent_id]):
                 continue
             assignments.append((agent_id, task_id))
             used_agents.add(agent_id)
-            slots[task_id] -= 1
             if len(used_agents) == len(agents):
                 break
         return assignments

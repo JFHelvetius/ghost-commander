@@ -46,8 +46,27 @@ class World:
         return [t for t in self.tasks.values() if t.open]
 
     def assignable_tasks(self) -> list[Task]:
-        """Open tasks still short of their required agent count."""
-        return [t for t in self.tasks.values() if t.needs_more_agents]
+        """Open tasks that still have an unfilled slot."""
+        return [t for t in self.tasks.values() if self.needed_slots(t)]
+
+    def needed_slots(self, task: Task) -> list[str | None]:
+        """The slots this task still needs, one per entry, as a skill or ``None``.
+
+        Unifies the three cases: a plain task -> ``[None] * free`` (any agent); a
+        single-skill task -> ``[skill] * free``; a mixed task (``required_skills``)
+        -> the list of required skills not yet covered by an assigned agent.
+        """
+        if not task.open:
+            return []
+        if task.required_skills:
+            covered = {
+                self.agents[a].skill
+                for a in task.assigned
+                if a in self.agents and self.agents[a].alive
+            }
+            return [s for s in task.required_skills if s not in covered]
+        free = task.required_agents - len(task.assigned)
+        return [task.required_skill] * max(0, free)
 
     def task_of(self, agent: Agent) -> Task | None:
         return self.tasks.get(agent.task_id) if agent.task_id is not None else None

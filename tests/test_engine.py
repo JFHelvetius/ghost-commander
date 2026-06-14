@@ -217,3 +217,68 @@ def test_replan_emits_rescue_reassignments() -> None:
     rescues = [e for e in rec.events
                if e["type"] == str(EventType.TASK_REASSIGNED) and e.get("p_reason") == "rescue"]
     assert rescues, "expected at least one rescue preemption under tight deadlines"
+
+
+def test_priority_escalates_over_time() -> None:
+    from ghost_commander.domain import Task, TaskPriority
+
+    t = Task(id=0, x=0, y=0, priority=TaskPriority.NORMAL, escalate_every=10, created_tick=0)
+    assert t.priority_at(0) == 2
+    assert t.priority_at(9) == 2
+    assert t.priority_at(10) == 3
+    assert t.priority_at(10_000) == int(TaskPriority.VITAL)  # capped
+    static = Task(id=1, x=0, y=0, priority=TaskPriority.NORMAL)  # no escalation
+    assert static.priority_at(10_000) == 2
+
+
+def test_escalating_preset_runs_and_differentiates() -> None:
+    greedy = run_scenario(PRESETS["escalating"], "greedy").final_metrics["mission_completion"]
+    triage = run_scenario(PRESETS["escalating"], "triage").final_metrics["mission_completion"]
+    assert triage >= greedy
+
+
+def test_mixed_task_needs_each_required_skill() -> None:
+    from ghost_commander.domain import Agent, Task, World
+
+    sim = Simulation(Scenario(seed=1, n_agents=1, n_tasks=1), "global")
+    world = World(width=10, height=10)
+    world.add_task(Task(id=0, x=0.0, y=0.0, required_skills=("a", "b"), workload=5.0))
+    # two agents of the SAME skill on-site -> the other skill is missing -> no progress
+    world.add_agent(Agent(id=0, x=0.0, y=0.0, task_id=0, skills=frozenset({"a"})))
+    world.add_agent(Agent(id=1, x=0.0, y=0.0, task_id=0, skills=frozenset({"a"})))
+    world.tasks[0].assigned = {0, 1}
+    sim.world = world
+    sim._advance_agents(1)
+    assert world.tasks[0].remaining == 5.0  # missing skill "b"
+    # give agent 1 the missing skill -> both skills present -> progress
+    world.agents[1].skills = frozenset({"b"})
+    sim._advance_agents(2)
+    assert world.tasks[0].remaining < 5.0
+
+
+def test_taskforce_forms_and_completes_mixed_teams() -> None:
+    from ghost_commander.domain import TaskStatus
+
+    sim = Simulation(PRESETS["taskforce"], "global")
+    sim.run()
+    mixed = [t for t in sim.world.tasks.values() if t.required_skills]
+    assert mixed, "taskforce should produce mixed-specialist tasks"
+    assert any(t.status is TaskStatus.DONE for t in mixed)
+
+
+@pytest.mark.parametrize("strategy", list(STRATEGIES))
+def test_mixed_assignment_respects_skill_mix(strategy: str) -> None:
+    # No agent is ever sent to a mixed task it can't contribute a needed skill to.
+    sim = Simulation(PRESETS["taskforce"], strategy)
+    original = sim._advance_agents
+
+    def guarded(tick: int) -> None:
+        for ag in sim.world.alive_agents():
+            if ag.task_id is not None:
+                t = sim.world.tasks[ag.task_id]
+                if t.required_skills:
+                    assert ag.skill in t.required_skills, f"{ag.id} on mixed task {t.id}"
+        original(tick)
+
+    sim._advance_agents = guarded  # type: ignore[method-assign]
+    sim.run()

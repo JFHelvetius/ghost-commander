@@ -50,6 +50,11 @@ class Agent:
         return skill is None or skill in self.skills
 
     @property
+    def skill(self) -> str | None:
+        """This agent's single specialization (or None if a generalist)."""
+        return next(iter(sorted(self.skills)), None)
+
+    @property
     def alive(self) -> bool:
         return self.status is not AgentStatus.FAILED
 

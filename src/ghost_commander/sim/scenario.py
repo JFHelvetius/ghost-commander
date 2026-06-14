@@ -80,6 +80,16 @@ class Scenario:
     cooperative_fraction: float = 0.0
     cooperative_agents: int = 2
 
+    # mixed-specialist tasks (opt-in): a fraction of tasks need one agent of EACH
+    # of ``mixed_skill_count`` distinct skills present at once. Requires
+    # ``agent_skills``. 0 = none (no extra RNG draw -> digests unchanged).
+    mixed_skill_fraction: float = 0.0
+    mixed_skill_count: int = 2
+
+    # dynamic priority (opt-in): every N ticks a lingering task's effective
+    # priority rises by one. 0 = static (no change to scheduling).
+    priority_escalation: int = 0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -139,6 +149,10 @@ class Scenario:
         offset = self._deadline_offset(workload)
         required_skill = self._draw_task_skill(rng)
         required_agents = self._draw_team_size(rng)
+        required_skills = self._draw_mixed_skills(rng)
+        if required_skills:
+            required_skill = None  # a mixed task needs each listed skill, not one
+            required_agents = 1    # __post_init__ resets it to len(required_skills)
         return Task(
             id=task_id,
             x=x,
@@ -149,12 +163,25 @@ class Scenario:
             created_tick=created_tick,
             deadline_tick=None if offset is None else created_tick + offset,
             required_skill=required_skill,
+            required_skills=required_skills,
+            escalate_every=self.priority_escalation or None,
         )
 
     def _draw_team_size(self, rng: RandomSource) -> int:
         if self.cooperative_fraction <= 0:
             return 1
         return self.cooperative_agents if rng.chance(self.cooperative_fraction) else 1
+
+    def _draw_mixed_skills(self, rng: RandomSource) -> tuple[str, ...]:
+        if self.mixed_skill_fraction <= 0 or len(self.agent_skills) < self.mixed_skill_count:
+            return ()
+        if not rng.chance(self.mixed_skill_fraction):
+            return ()
+        pool = list(self.agent_skills)
+        chosen: list[str] = []
+        for _ in range(self.mixed_skill_count):
+            chosen.append(pool.pop(rng.integers(0, len(pool))))
+        return tuple(sorted(chosen))
 
     def _draw_agent_skill(self, rng: RandomSource) -> frozenset[str]:
         if not self.agent_skills:
@@ -400,6 +427,44 @@ PRESETS: dict[str, Scenario] = {
         shock_tick=None,
         deadline_slack_factor=2.5,  # events go stale if not inspected promptly
         deadline_slack_base=12,
+    ),
+    # Dynamic priorities: a task that waits gets more urgent (its effective
+    # priority climbs every few ticks), so the commander must keep re-ranking a
+    # lean fleet against a shock and tight deadlines.
+    "escalating": Scenario(
+        name="escalating",
+        seed=42,
+        n_agents=45,
+        n_tasks=55,
+        max_ticks=300,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=20,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.0,
+        deadline_slack_base=16,
+        priority_escalation=12,   # +1 priority every 12 ticks a task lingers
+    ),
+    # Task force: ~40% of tasks need a *mix* of specialists at once (e.g. one
+    # recon + one medical), on a heterogeneous fleet. The commander must send the
+    # right combination to each task, not just enough bodies.
+    "taskforce": Scenario(
+        name="taskforce",
+        seed=42,
+        n_agents=60,
+        n_tasks=55,
+        max_ticks=300,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=22,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=4.0,
+        deadline_slack_base=18,
+        agent_skills=("recon", "repair", "medical"),
+        agent_skill_weights=(0.34, 0.33, 0.33),
+        task_skill_weights=(0.34, 0.33, 0.33),
+        mixed_skill_fraction=0.4,
+        mixed_skill_count=2,
     ),
 }
 

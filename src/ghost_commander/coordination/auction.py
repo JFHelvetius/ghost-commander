@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, can_handle, priority_weight
+from .base import Assignment, can_fill, fill_slot, priority_weight
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -26,22 +26,20 @@ class AuctionStrategy:
     def assign(self, world: World) -> list[Assignment]:
         assignments: list[Assignment] = []
         available = {a.id: a for a in world.available_agents()}
-        slots = {t.id: t.required_agents - len(t.assigned) for t in world.assignable_tasks()}
         tasks = {t.id: t for t in world.assignable_tasks()}
+        needs = {tid: world.needed_slots(t) for tid, t in tasks.items()}
 
         # Round-based: each round, every open slot picks its best remaining bidder.
-        while available and any(s > 0 for s in slots.values()):
-            # Build best bid per task this round.
+        while available and any(needs.values()):
             round_claims: list[tuple[float, int, int]] = []  # (bid, agent_id, task_id)
-            for task_id, n in slots.items():
-                if n <= 0:
+            for task_id, task in tasks.items():
+                if not needs[task_id]:
                     continue
-                task = tasks[task_id]
                 best: tuple[float, int] | None = None  # (bid, agent_id)
                 for agent in available.values():
-                    if not can_handle(agent, task):
+                    if not can_fill(needs[task_id], agent):
                         continue
-                    bid = priority_weight(task.priority) / (
+                    bid = priority_weight(task.priority_at(world.tick)) / (
                         agent.distance_to(task.x, task.y) + _EPS
                     )
                     if best is None or bid > best[0] or (bid == best[0] and agent.id < best[1]):
@@ -56,13 +54,12 @@ class AuctionStrategy:
             round_claims.sort(key=lambda c: (-c[0], c[1], c[2]))
             taken_agents: set[int] = set()
             progressed = False
-            for bid, agent_id, task_id in round_claims:
-                if agent_id in taken_agents or slots[task_id] <= 0:
+            for _bid, agent_id, task_id in round_claims:
+                if agent_id in taken_agents or agent_id not in available or not needs[task_id]:
                     continue
-                if agent_id not in available:
+                if not fill_slot(needs[task_id], available[agent_id]):
                     continue
                 assignments.append((agent_id, task_id))
-                slots[task_id] -= 1
                 taken_agents.add(agent_id)
                 del available[agent_id]
                 progressed = True

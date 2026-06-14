@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ghost_commander.coordination import CoordinationStrategy, make_strategy
-from ghost_commander.coordination.base import urgency_score
+from ghost_commander.coordination.base import can_fill, urgency_score
 from ghost_commander.core import EventBus, EventLog, EventSeverity, EventType, RandomSource, SimClock
 from ghost_commander.domain import AgentStatus, TaskStatus
 
@@ -161,7 +161,7 @@ class Simulation:
             keep = urgency_score(agent, current, tick) * (1.0 + _REPLAN_HYSTERESIS)
             best, best_s = None, keep
             for task in self.world.assignable_tasks():
-                if task.id == current.id or not agent.has_skill(task.required_skill):
+                if task.id == current.id or not can_fill(self.world.needed_slots(task), agent):
                     continue
                 spare = _spare_ticks(agent, task, tick)
                 if spare is None or spare < 0 or spare > _REPLAN_RISK_WINDOW:
@@ -197,11 +197,7 @@ class Simulation:
         for agent_id, task_id in self.strategy.assign(self.world):
             agent = self.world.agents[agent_id]
             task = self.world.tasks[task_id]
-            if (
-                not agent.available
-                or not task.needs_more_agents
-                or not agent.has_skill(task.required_skill)
-            ):
+            if not agent.available or not can_fill(self.world.needed_slots(task), agent):
                 continue
             agent.task_id = task_id
             agent.status = AgentStatus.MOVING
@@ -255,7 +251,12 @@ class Simulation:
                 for aid in sorted(task.assigned)
                 if self.world.agents[aid].status is AgentStatus.WORKING
             ]
-            if len(present) < task.required_agents:
+            if task.required_skills:
+                # mixed task: progresses only once every required skill is on-site
+                present_skills = {a.skill for a in present}
+                if not all(s in present_skills for s in task.required_skills):
+                    continue
+            elif len(present) < task.required_agents:
                 continue  # team incomplete -> no progress this tick
             if task.status is TaskStatus.ASSIGNED:
                 task.status = TaskStatus.IN_PROGRESS

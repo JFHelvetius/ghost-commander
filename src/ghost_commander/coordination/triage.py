@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Assignment, can_handle, urgency_score
+from .base import Assignment, can_fill, fill_slot, urgency_score
 
 if TYPE_CHECKING:
     from ghost_commander.domain import World
@@ -38,11 +38,12 @@ class TriageStrategy:
         if not agents or not tasks:
             return []
 
-        slots = {t.id: t.required_agents - len(t.assigned) for t in tasks}
+        needs = {t.id: world.needed_slots(t) for t in tasks}
+        amap = {a.id: a for a in agents}
         table: list[tuple[float, int, int]] = []  # (score, agent_id, task_id)
         for agent in agents:
             for task in tasks:
-                if not can_handle(agent, task):
+                if not can_fill(needs[task.id], agent):
                     continue
                 table.append((urgency_score(agent, task, world.tick), agent.id, task.id))
 
@@ -51,11 +52,12 @@ class TriageStrategy:
         assignments: list[Assignment] = []
         used: set[int] = set()
         for _score, agent_id, task_id in table:
-            if agent_id in used or slots.get(task_id, 0) <= 0:
+            if agent_id in used or not needs[task_id]:
+                continue
+            if not fill_slot(needs[task_id], amap[agent_id]):
                 continue
             assignments.append((agent_id, task_id))
             used.add(agent_id)
-            slots[task_id] -= 1
             if len(used) == len(agents):
                 break
         return assignments

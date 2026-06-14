@@ -107,6 +107,10 @@ _SCENARIO_DIFF = {
            "ventana (plazos), extracciones que exigen equipo de 2, y una réplica.",
     "patrol": "**Vigilancia persistente**: eventos que aparecen sin parar en un área "
               "grande y hay que atender a tiempo, con flota modesta. Cobertura sostenida.",
+    "escalating": "**Prioridades dinámicas**: una tarea que espera se vuelve más "
+                  "urgente; hay que re-priorizar la flota sin parar.",
+    "taskforce": "**Mix de especialistas**: ~40% de tareas necesitan 1 de cada tipo a "
+                 "la vez (p. ej. recon + médico) — la combinación correcta, no solo cuerpos.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -156,6 +160,12 @@ _SCENARIO_DESC = {
     "patrol": "**Vigilancia persistente / cobertura**: eventos a inspeccionar que "
               "aparecen sin parar en un área grande y deben atenderse a tiempo, con "
               "una flota modesta. El reto es la cobertura sostenida.",
+    "escalating": "**Prioridades dinámicas**: cada tarea que espera sube de prioridad "
+                  "con el tiempo, así que el comandante debe re-rankear la flota "
+                  "continuamente, bajo onda de choque y plazos.",
+    "taskforce": "**Equipo conjunto (mix de especialistas)**: ~40% de tareas requieren "
+                 "un agente de *cada tipo* a la vez (p. ej. recon + médico). Hay que "
+                 "enviar la combinación correcta, no solo cuerpos suficientes.",
 }
 
 
@@ -234,7 +244,9 @@ def _frame_scatters(
         tsize.append(_PRIORITY_SIZE.get(t["priority"], 12))
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
-                    + (f" · equipo:{t['required_agents']}" if t.get("required_agents", 1) > 1 else ""))
+                    + (f" · mix:{'+'.join(t['required_skills'])}" if t.get("required_skills") else "")
+                    + (f" · equipo:{t['required_agents']}"
+                       if t.get("required_agents", 1) > 1 and not t.get("required_skills") else ""))
     traces.append(go.Scattergl(
         x=tx_, y=ty_, mode="markers", name="tareas", showlegend=False,
         marker=dict(symbol=tsym, size=tsize, color=tcol, opacity=topac,
