@@ -88,32 +88,37 @@ _SCENARIO_DESC = {
 # --------------------------------------------------------------------------- map
 # Fixed trace order so Plotly can animate frame-to-frame (trace count is constant):
 #   0 links · 1 bases · 2 tasks-open · 3 tasks-done · 4 tasks-failed · 5 halo · 6 core
-def _frame_scatters(frame: dict) -> list[go.Scatter]:
+import math as _math
+
+
+def _frame_scatters(frame: dict, prev_pos: dict[int, tuple[float, float]]) -> list[go.Scatter]:
     """Fixed traces for one tick. Agents live in a SINGLE id-ordered pair of traces
-    (a soft glow halo + a crisp core) so Plotly interpolates each agent's position
-    between ticks -> smooth, continuous motion (no teleporting)."""
+    (a soft glow halo + a crisp shaped core) so Plotly interpolates each agent's
+    position between ticks -> smooth, continuous motion (no teleporting)."""
     world = frame["world"]
     agents = sorted(world["agents"], key=lambda a: a["id"])
     tasks = world["tasks"]
     bases = world.get("bases", [])
     tpos = {t["id"]: (t["x"], t["y"]) for t in tasks}
 
+    # links only for agents *en route* (moving) -> far fewer, calmer lines that
+    # don't storm the map after the shock; working agents are already on-site.
     lx: list[float | None] = []
     ly: list[float | None] = []
     for a in agents:
-        if a["status"] in ("moving", "working") and a.get("task_id") in tpos:
+        if a["status"] == "moving" and a.get("task_id") in tpos:
             tx, ty = tpos[a["task_id"]]
             lx += [a["x"], tx, None]
             ly += [a["y"], ty, None]
     traces: list[go.Scatter] = [go.Scatter(
         x=lx, y=ly, mode="lines", name="asignaciones",
-        line=dict(color="rgba(58,160,255,0.16)", width=1), hoverinfo="skip",
+        line=dict(color="rgba(58,160,255,0.11)", width=1), hoverinfo="skip",
         showlegend=False,
     )]
 
     traces.append(go.Scatter(
         x=[b[0] for b in bases], y=[b[1] for b in bases], mode="markers", name="bases",
-        marker=dict(symbol="diamond", size=15, color="#19c3d6",
+        marker=dict(symbol="diamond-wide", size=16, color="#19c3d6",
                     line=dict(width=1, color="#bdf3fa")),
         text=[f"base {i}" for i in range(len(bases))], hoverinfo="text", showlegend=False,
     ))
@@ -131,7 +136,7 @@ def _frame_scatters(frame: dict) -> list[go.Scatter]:
             x=[t["x"] for t in sel], y=[t["y"] for t in sel], mode="markers",
             name=f"tarea·{bucket}", showlegend=False,
             marker=dict(symbol=symbol, size=[_PRIORITY_SIZE.get(t["priority"], 12) for t in sel],
-                        color=color, opacity=0.55 if bucket == "open" else 1.0,
+                        color=color, opacity=0.5 if bucket == "open" else 1.0,
                         line=dict(width=1.4 if bucket == "failed" else 1, color=color)),
             text=[f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                   + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
@@ -140,34 +145,47 @@ def _frame_scatters(frame: dict) -> list[go.Scatter]:
             hoverinfo="text",
         ))
 
-    # agents: id-stable position so each one interpolates smoothly between ticks
+    # agents: id-stable index so each one interpolates smoothly between ticks.
+    # Shape conveys what it's doing: a craft pointing its heading when moving,
+    # a unit token (diamond) when on station — like an ops display.
     ax: list[float | None] = []
     ay: list[float | None] = []
-    core_c, halo_c, core_s, halo_s, htxt = [], [], [], [], []
+    core_c, halo_c, core_s, halo_s, syms, angs, htxt = [], [], [], [], [], [], []
     for a in agents:
         st_ = a["status"]
         if st_ == "failed":
             ax.append(None); ay.append(None)
-            core_c.append("#000"); halo_c.append("#000")
-            core_s.append(6); halo_s.append(12); htxt.append("")
+            core_c.append("#000"); halo_c.append("#000"); core_s.append(8); halo_s.append(16)
+            syms.append("circle"); angs.append(0); htxt.append("")
             continue
         ax.append(a["x"]); ay.append(a["y"])
         col = _STATUS_COLOR.get(st_, "#cccccc")
         core_c.append(col); halo_c.append(col)
-        cs = 6.0 + 3.0 * float(a["resources"])  # bigger = more resources
-        core_s.append(cs); halo_s.append(cs + 11)
+        base_s = 9.0 + 3.0 * float(a["resources"])  # bigger = more resources
+        if st_ == "moving" and a["id"] in prev_pos:
+            px, py = prev_pos[a["id"]]
+            dx, dy = a["x"] - px, a["y"] - py
+            if dx * dx + dy * dy > 1e-6:
+                syms.append("triangle-up"); angs.append(_math.degrees(_math.atan2(dx, dy)))
+            else:
+                syms.append("diamond"); angs.append(0)
+        elif st_ == "recharging":
+            syms.append("diamond"); angs.append(0)
+        elif st_ == "working":
+            syms.append("diamond"); angs.append(0)
+        else:  # idle
+            syms.append("circle"); angs.append(0)
+        core_s.append(base_s); halo_s.append(base_s + 12)
         htxt.append(f"agente {a['id']} · {st_} · recursos {int(a['resources']*100)}%"
                     + (f" · {a['skill']}" if a.get("skill") else ""))
-    # soft glow underneath
-    traces.append(go.Scatter(
+    traces.append(go.Scatter(  # soft glow underneath
         x=ax, y=ay, mode="markers", name="halo", showlegend=False, hoverinfo="skip",
-        marker=dict(size=halo_s, color=halo_c, opacity=0.16, line=dict(width=0)),
+        marker=dict(size=halo_s, color=halo_c, opacity=0.15, line=dict(width=0)),
     ))
-    # crisp core on top
-    traces.append(go.Scatter(
+    traces.append(go.Scatter(  # crisp shaped core on top
         x=ax, y=ay, mode="markers", name="agentes", showlegend=False,
-        marker=dict(size=core_s, color=core_c, line=dict(width=0.6,
-                    color="rgba(255,255,255,0.35)")),
+        marker=dict(size=core_s, color=core_c, symbol=syms, angle=angs,
+                    line=dict(width=0.7, color="rgba(255,255,255,0.4)")),
         text=htxt, hoverinfo="text",
     ))
     return traces
@@ -183,15 +201,22 @@ def _animated_map_figure(rec: RunRecording, width: float, height: float) -> go.F
     if idxs[-1] != n - 1:
         idxs.append(n - 1)
 
-    base = _frame_scatters(rec.frames[idxs[0]])
-    frames = [go.Frame(data=_frame_scatters(rec.frames[i]), name=str(i)) for i in idxs]
+    def _pos(i: int) -> dict[int, tuple[float, float]]:
+        return {a["id"]: (a["x"], a["y"]) for a in rec.frames[i]["world"]["agents"]}
 
-    # frame duration == transition duration => constant-velocity, continuous glide
-    dur = 120
+    prev: dict[int, tuple[float, float]] = {}
+    base = _frame_scatters(rec.frames[idxs[0]], prev)
+    frames = []
+    for i in idxs:
+        frames.append(go.Frame(data=_frame_scatters(rec.frames[i], prev), name=str(i)))
+        prev = _pos(i)
+
+    # frame duration > transition duration leaves the browser slack to finish
+    # each redraw before the next starts -> no runaway / "crazy" catch-up jumps.
     play = dict(label="▶ Reproducir", method="animate",
-                args=[None, {"frame": {"duration": dur, "redraw": True},
+                args=[None, {"frame": {"duration": 200, "redraw": True},
                              "fromcurrent": True,
-                             "transition": {"duration": dur, "easing": "linear"}}])
+                             "transition": {"duration": 140, "easing": "linear"}}])
     pause = dict(label="⏸ Pausa", method="animate",
                  args=[[None], {"frame": {"duration": 0, "redraw": False},
                                 "mode": "immediate"}])
