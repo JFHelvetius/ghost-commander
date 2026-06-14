@@ -413,14 +413,22 @@ comandante digital reasigna la flota en tiempo real para salvar la misión.
 
 **Cómo leer el mapa.**
 
-- 🟩 **verde** trabajando · 🟦 **azul** en ruta · ⬜ **gris** libre · 🟪 **morado** recargando · 🟥 caído
-- ⬛ **cuadrados** = tareas (tamaño = prioridad) · ▢ atenuado = hecha · ✕ roja = **fallada** (deadline perdido) · ◆ = base de recarga
-- Arrastra el **replay** para rebobinar la misión tick a tick. La línea roja
-  punteada del gráfico marca la onda de choque.
+- **Agentes** = los puntos con halo. El **color** dice qué hacen: 🟩 verde
+  trabajando · 🟦 azul yendo a una tarea · ⬜ gris libre · 🟪 morado recargando.
+  La **forma** también: ▲ nave (se mueve, apunta a su destino) · ◆ rombo (en una
+  tarea o base) · ● círculo (libre). Más grande = más recursos. Si un agente
+  cae, **desaparece** del mapa.
+- **Tareas** = cuadrados, tamaño según prioridad: 🟧 ámbar pendiente · ▫️
+  atenuado hecha · ✖️ roja **fallada** (no llegó a tiempo). 🔷 rombo cian = base
+  de recarga.
+- **Líneas azules tenues** = las asignaciones del comandante (qué agente va a qué
+  tarea). Míralas **reorganizarse** tras la onda de choque.
 
-**Pruébalo.** Cambia el **escenario** (barra lateral) y compara estrategias en
-la pestaña 📊: con el mismo escenario y seed, *solo cambia el algoritmo*, así que
-la diferencia que ves es pura coordinación.
+**Cómo se usa.** Pulsa **▶ Reproducir** sobre el mapa para ver la misión en
+movimiento (o arrastra el control de **pasos** para ir tú mismo). Cambia el
+**escenario** y la **estrategia** en la barra lateral y pulsa **Ejecutar misión**.
+En la pestaña 📊 comparas estrategias: mismo escenario y seed, *solo cambia el
+algoritmo*, así que la diferencia es pura coordinación.
 
 > El proyecto modela 8 dimensiones del problema real (fallos, deadlines,
 > entornos cambiantes, especialización, recuperación, cooperación…), todas
@@ -508,10 +516,11 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
             _animated_map_figure(rec, _world_w(rec), _world_h(rec)),
             use_container_width=True,
         )
-        st.caption("🟩 trabajando · 🟦 en ruta · ⬜ libre · 🟪 recargando — "
-                   "🟧 tarea pendiente · ▫️ tarea hecha · ✖️ tarea fallada · 🔷 base. "
-                   "Las líneas azules tenues son las asignaciones del comandante: "
-                   "míralas **recablearse** tras la onda de choque.")
+        st.caption("**Agentes** (color=qué hacen, forma=▲ se mueve / ◆ en tarea / "
+                   "● libre): 🟩 trabajando · 🟦 en ruta · ⬜ libre · 🟪 recargando. "
+                   "**Tareas**: 🟧 pendiente · ▫️ hecha · ✖️ fallada · 🔷 base. "
+                   "Las líneas azules son las asignaciones del comandante: míralas "
+                   "**reorganizarse** tras el shock.")
     with right:
         st.markdown("**Progreso a lo largo del tiempo**")
         st.plotly_chart(
