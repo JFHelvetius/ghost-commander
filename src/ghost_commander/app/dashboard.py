@@ -365,37 +365,70 @@ def _sidebar() -> tuple[Scenario, str]:
         f'<div class="gc-side-logo">{_logo(34)}<span>GHOST COMMANDER</span></div>',
         unsafe_allow_html=True,
     )
-    st.sidebar.caption("Coordinación dinámica de cientos de agentes autónomos")
+    st.sidebar.caption("Configura la misión aquí y pulsa **Ejecutar misión**.")
 
-    preset_name = st.sidebar.selectbox("Escenario", list(PRESETS), index=0)
+    with st.sidebar.expander("ℹ️ Guía rápida de los controles"):
+        st.markdown(
+            "- **Escenario** = la *situación* a la que se enfrenta la flota. Cada "
+            "uno mete un reto distinto (onda de choque, plazos, especialistas, "
+            "tareas que llegan, bases de recarga…). Lee la descripción que sale "
+            "al elegirlo.\n"
+            "- **Estrategia** = el *cerebro* del comandante, su forma de repartir "
+            "el trabajo. Compáralas en la pestaña 📊.\n"
+            "- **Seed** = la semilla del azar. **Misma seed = misma misión** "
+            "(posiciones, fallos…), bit a bit. Cámbiala para ver *otra* partida "
+            "del mismo escenario.\n"
+            "- **Duración** = estira la misión en el tiempo (más pasos), sin "
+            "cambiar el resultado. **Velocidad** = solo lo rápido que se reproduce.\n"
+            "- **Ajustes finos** = tamaño de flota, nº de tareas y límite de tiempo, "
+            "por si quieres trastear."
+        )
+
+    preset_name = st.sidebar.selectbox(
+        "Escenario (la situación)", list(PRESETS), index=0,
+        help="Cada escenario plantea un reto distinto. Elige uno y lee su "
+             "descripción justo debajo.")
     base = PRESETS[preset_name]
     st.sidebar.info(_SCENARIO_DESC.get(preset_name, ""))
 
     strategy = st.sidebar.selectbox(
-        "Estrategia de coordinación", list(STRATEGIES),
+        "Estrategia (el cerebro del comandante)", list(STRATEGIES),
         index=list(STRATEGIES).index("global"),
-        help="greedy: local · auction: por tarea · global: óptimo aprox. · "
-             "triage: consciente de deadlines",
-    )
-    seed = st.sidebar.number_input("Seed", min_value=0, value=int(base.seed), step=1)
+        help="Cómo reparte el trabajo el comandante. greedy: cada unidad va a lo "
+             "más cercano (local) · auction y global: miran a toda la flota a la "
+             "vez · triage: además tiene en cuenta los plazos. Compáralas en 📊.")
+    seed = st.sidebar.number_input(
+        "Seed (semilla del azar)", min_value=0, value=int(base.seed), step=1,
+        help="Fija el azar de la misión. Misma seed = misma partida idéntica. "
+             "Cámbiala para ver otra distribución del mismo escenario.")
 
     dur_label = st.sidebar.select_slider(
         "Duración de la misión", options=["Normal", "Largo (2×)", "Épico (3×)"],
         value="Normal",
-        help="Dilata el tiempo: la misma situación se desarrolla a lo largo de más "
-             "pasos (agentes más lentos, trabajo y desgaste repartidos). El "
-             "resultado es prácticamente el mismo; solo cambia cuánto tarda.")
+        help="Estira la misión en el tiempo: la misma situación se desarrolla a lo "
+             "largo de más pasos (agentes más lentos, todo repartido). El resultado "
+             "es prácticamente el mismo; solo cambia cuánto tarda en verse.")
     time_scale = {"Normal": 1, "Largo (2×)": 2, "Épico (3×)": 3}[dur_label]
 
     play_label = st.sidebar.select_slider(
         "Velocidad de reproducción", options=["Lento", "Normal", "Rápido"],
-        value="Normal", help="Solo afecta a la animación, no a la simulación.")
+        value="Normal", help="Solo cambia lo rápido que va la animación; no afecta "
+             "a la simulación ni al resultado.")
     st.session_state["play_ms"] = {"Lento": 220, "Normal": 130, "Rápido": 70}[play_label]
 
-    with st.sidebar.expander("Ajustes finos"):
-        n_agents = st.slider("Agentes", 10, 300, int(base.n_agents), step=10)
-        n_tasks = st.slider("Tareas (iniciales)", 5, 120, int(base.n_tasks), step=5)
-        max_ticks = st.slider("Máx. ticks", 100, 2000, int(base.max_ticks), step=50)
+    with st.sidebar.expander("Ajustes finos (opcional)"):
+        st.caption("Cambia el reparto base del escenario. Si no sabes qué tocar, "
+                   "déjalo como está.")
+        n_agents = st.slider("Agentes (tamaño de la flota)", 10, 300,
+                             int(base.n_agents), step=10,
+                             help="Cuántas unidades autónomas salen a la misión.")
+        n_tasks = st.slider("Tareas iniciales (trabajos a hacer)", 5, 120,
+                            int(base.n_tasks), step=5,
+                            help="Cuántas tareas hay en el mapa al empezar (algunos "
+                                 "escenarios añaden más sobre la marcha).")
+        max_ticks = st.slider("Límite de tiempo (máx. pasos)", 100, 2000,
+                              int(base.max_ticks), step=50,
+                              help="Si la misión no termina antes, se corta aquí.")
 
     scenario = dataclasses.replace(
         base, seed=int(seed), n_agents=int(n_agents), n_tasks=int(n_tasks),
@@ -493,10 +526,11 @@ comandante digital reasigna la flota en tiempo real para salvar la misión.
   tarea). Míralas **reorganizarse** tras la onda de choque.
 
 **Cómo se usa.** Pulsa **▶ Reproducir** sobre el mapa para ver la misión en
-movimiento (o arrastra el control de **pasos** para ir tú mismo). Cambia el
-**escenario** y la **estrategia** en la barra lateral y pulsa **Ejecutar misión**.
-En la pestaña 📊 comparas estrategias: mismo escenario y seed, *solo cambia el
-algoritmo*, así que la diferencia es pura coordinación.
+movimiento (o arrastra el control de **pasos** para ir tú mismo). En la barra
+lateral cambias el **escenario** y la **estrategia** y pulsas **Ejecutar misión**
+— cada control tiene una **ℹ️** que lo explica, y arriba del todo hay una *guía
+rápida*. En la pestaña 📊 comparas estrategias: mismo escenario y seed, *solo
+cambia el algoritmo*, así que la diferencia es pura coordinación.
 
 > El proyecto modela 8 dimensiones del problema real (fallos, deadlines,
 > entornos cambiantes, especialización, recuperación, cooperación…), todas
