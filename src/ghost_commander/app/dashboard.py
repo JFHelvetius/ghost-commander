@@ -111,6 +111,8 @@ _SCENARIO_DIFF = {
                   "urgente; hay que re-priorizar la flota sin parar.",
     "taskforce": "**Mix de especialistas**: ~40% de tareas necesitan 1 de cada tipo a "
                  "la vez (p. ej. recon + médico) — la combinación correcta, no solo cuerpos.",
+    "mixedfleet": "**Flota heterogénea**: unidades rápidas/lentas y ligeras/pesadas; "
+                  "importa *qué* unidad encaja, no solo cuál está cerca.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -166,6 +168,9 @@ _SCENARIO_DESC = {
     "taskforce": "**Equipo conjunto (mix de especialistas)**: ~40% de tareas requieren "
                  "un agente de *cada tipo* a la vez (p. ej. recon + médico). Hay que "
                  "enviar la combinación correcta, no solo cuerpos suficientes.",
+    "mixedfleet": "**Flota heterogénea**: cada unidad tiene velocidad y capacidad de "
+                  "trabajo distintas (exploradores rápidos vs. unidades pesadas). Bajo "
+                  "plazos premia a quien razona el tiempo real de cada unidad (triage).",
 }
 
 

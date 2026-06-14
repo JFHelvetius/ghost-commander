@@ -110,8 +110,9 @@ de recarga), `joint` (tareas cooperativas que exigen equipos), `recon` (ISR /
 reconocimiento bajo interferencias), `resupply` (logística en disputa sostenida
 por bases), `sar` (búsqueda y rescate contra reloj con extracciones en equipo),
 `patrol` (vigilancia persistente de un área grande), `escalating` (prioridades
-**dinámicas**: lo que espera se vuelve más urgente) y `taskforce` (tareas que
-exigen un **mix de especialistas** a la vez). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
+**dinámicas**: lo que espera se vuelve más urgente), `taskforce` (tareas que
+exigen un **mix de especialistas** a la vez) y `mixedfleet` (**flota
+heterogénea**: unidades rápidas/lentas, ligeras/pesadas). Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
 `optimal` (óptimo exacto por tick, baseline).
 
 > **Alcance y frontera.** Ghost Commander es un **asignador de tareas abstracto**

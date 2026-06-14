@@ -90,6 +90,12 @@ class Scenario:
     # priority rises by one. 0 = static (no change to scheduling).
     priority_escalation: int = 0
 
+    # heterogeneous fleet (opt-in): each agent's speed/capacity is drawn within
+    # ±spread of the base (fractional, e.g. 0.5 = ±50%). 0 = uniform fleet (no
+    # extra RNG draw -> existing scenario digests unchanged).
+    agent_speed_spread: float = 0.0
+    agent_capacity_spread: float = 0.0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -100,13 +106,15 @@ class Scenario:
             x = rng.uniform(0, self.width)
             y = rng.uniform(0, self.height)
             skills = self._draw_agent_skill(rng)
+            speed = self._spread(rng, self.agent_speed, self.agent_speed_spread)
+            capacity = self._spread(rng, self.agent_capacity, self.agent_capacity_spread)
             world.add_agent(
                 Agent(
                     id=i,
                     x=x,
                     y=y,
-                    speed=self.agent_speed,
-                    capacity=self.agent_capacity,
+                    speed=speed,
+                    capacity=capacity,
                     resources=1.0,
                     skills=skills,
                 )
@@ -166,6 +174,13 @@ class Scenario:
             required_skills=required_skills,
             escalate_every=self.priority_escalation or None,
         )
+
+    @staticmethod
+    def _spread(rng: RandomSource, base: float, spread: float) -> float:
+        """``base`` jittered within ±spread (fraction). spread<=0 -> no RNG draw."""
+        if spread <= 0:
+            return base
+        return max(0.1, base * rng.uniform(1.0 - spread, 1.0 + spread))
 
     def _draw_team_size(self, rng: RandomSource) -> int:
         if self.cooperative_fraction <= 0:
@@ -465,6 +480,28 @@ PRESETS: dict[str, Scenario] = {
         task_skill_weights=(0.34, 0.33, 0.33),
         mixed_skill_fraction=0.4,
         mixed_skill_count=2,
+    ),
+    # Mixed fleet: heterogeneous units — fast/slow, light/heavy — so *which* unit
+    # fits a task depends on its capabilities, not just its position. Under
+    # deadlines this rewards strategies that reason about each unit's real
+    # time-to-complete (triage does; pure distance heuristics don't).
+    "mixedfleet": Scenario(
+        name="mixedfleet",
+        seed=42,
+        n_agents=45,
+        n_tasks=55,
+        max_ticks=300,
+        agent_speed=3.0,
+        agent_capacity=1.0,
+        agent_speed_spread=0.6,      # speeds vary ±60% (scouts vs heavies)
+        agent_capacity_spread=0.6,   # work rates vary ±60%
+        task_min_workload=10.0,
+        task_max_workload=34.0,      # wide workload range -> capability match matters
+        random_failure_rate=0.004,
+        shock_tick=20,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.0,
+        deadline_slack_base=14,
     ),
 }
 

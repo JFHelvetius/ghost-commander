@@ -282,3 +282,21 @@ def test_mixed_assignment_respects_skill_mix(strategy: str) -> None:
 
     sim._advance_agents = guarded  # type: ignore[method-assign]
     sim.run()
+
+
+def test_heterogeneous_fleet_varies_capabilities() -> None:
+    sim = Simulation(PRESETS["mixedfleet"], "global")
+    speeds = {round(a.speed, 4) for a in sim.world.agents.values()}
+    caps = {round(a.capacity, 4) for a in sim.world.agents.values()}
+    assert len(speeds) > 5 and len(caps) > 5  # a genuinely varied fleet
+
+
+def test_uniform_fleet_when_no_spread() -> None:
+    sim = Simulation(Scenario(seed=2, n_agents=20, n_tasks=10, agent_speed=3.0), "global")
+    assert {a.speed for a in sim.world.agents.values()} == {3.0}
+
+
+def test_mixedfleet_runs_and_greedy_is_not_best() -> None:
+    greedy = run_scenario(PRESETS["mixedfleet"], "greedy").final_metrics["mission_completion"]
+    triage = run_scenario(PRESETS["mixedfleet"], "triage").final_metrics["mission_completion"]
+    assert triage >= greedy
