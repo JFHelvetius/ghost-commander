@@ -607,65 +607,121 @@ def _build_custom_scenario(agents: int, tasks: int, area: int, seed: int, deadli
     )
 
 
+_CC_EXAMPLES = [
+    ("🚁 Drones → hospitales", "6 drones que entregan a 30 hospitales, urgente y con fallos"),
+    ("📦 Repartidores → pedidos", "20 repartidores y 80 pedidos que van surgiendo"),
+    ("🚒 Equipos → incidencias", "15 equipos atienden 50 incidencias tras un ataque"),
+]
+
+
+def _cc_apply(phrase: str) -> None:
+    d = _parse_nl(phrase)
+    if "agents" in d:
+        st.session_state.cc_agents = min(300, max(1, d["agents"]))
+    if "tasks" in d:
+        st.session_state.cc_tasks = min(200, max(1, d["tasks"]))
+    st.session_state.cc_deadlines = d["deadlines"]
+    st.session_state.cc_failures = d["failures"]
+    st.session_state.cc_shock = d["shock"]
+    st.session_state.cc_arrivals = d["arrivals"]
+
+
+def _cc_summary() -> str:
+    s = st.session_state
+    challenges = []
+    if s.cc_deadlines:
+        challenges.append("plazos")
+    if s.cc_failures:
+        challenges.append("fallos")
+    if s.cc_shock:
+        challenges.append("una onda de choque")
+    if s.cc_arrivals:
+        challenges.append("tareas que van llegando")
+    txt = f"**{s.cc_agents} unidades** atendiendo **{s.cc_tasks} puntos**"
+    if challenges:
+        txt += ", con " + ", ".join(challenges)
+    txt += f" · estrategia **{s.cc_strategy}**" + (" + re-planificación" if s.cc_replan else "")
+    return txt + "."
+
+
 def _render_custom() -> None:
-    st.markdown("### Monta tu propio caso")
+    st.markdown("### ✏️ Monta tu propio caso")
     st.markdown(
-        "Ghost Commander es un **coordinador genérico**: cualquier situación de *N "
-        "unidades que atienden M puntos* encaja (drones ↔ hospitales, equipos ↔ "
-        "incidencias, repartidores ↔ pedidos…). **No usa datos reales** — es una "
-        "simulación configurable — pero puedes montar tu hipótesis y ver cómo se "
-        "comporta cada estrategia."
+        "Es un **coordinador genérico** (no usa datos reales): cualquier situación de "
+        "*N unidades que atienden M puntos* encaja — drones↔hospitales, "
+        "repartidores↔pedidos, bomberos↔incendios… Móntalo y mira cómo se comporta."
     )
-    defaults = dict(cc_agents=20, cc_tasks=40, cc_area=200, cc_seed=42,
+    defaults = dict(cc_text="", cc_agents=20, cc_tasks=40, cc_area=200, cc_seed=42,
                     cc_deadlines=False, cc_failures=True, cc_shock=False,
                     cc_arrivals=False, cc_strategy="triage", cc_replan=False)
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
-    txt = st.text_input(
-        "Descríbelo en una frase (opcional)",
-        placeholder="p. ej.: 6 drones que entregan a 30 hospitales, urgente y con fallos")
+    st.markdown("**1 · Empieza por un ejemplo** (un clic lo rellena), o escribe tu frase:")
+    for col, (lab, phrase) in zip(st.columns(3), _CC_EXAMPLES):
+        if col.button(lab, use_container_width=True):
+            st.session_state.cc_text = phrase
+            _cc_apply(phrase)
+            st.rerun()
+    st.text_input("Descríbelo en una frase", key="cc_text",
+                  placeholder="p. ej.: 6 drones que entregan a 30 hospitales, urgente")
     if st.button("✨ Interpretar la frase"):
-        d = _parse_nl(txt)
-        if "agents" in d:
-            st.session_state.cc_agents = min(300, max(1, d["agents"]))
-        if "tasks" in d:
-            st.session_state.cc_tasks = min(200, max(1, d["tasks"]))
-        st.session_state.cc_deadlines = d["deadlines"]
-        st.session_state.cc_failures = d["failures"]
-        st.session_state.cc_shock = d["shock"]
-        st.session_state.cc_arrivals = d["arrivals"]
+        _cc_apply(st.session_state.cc_text)
         st.rerun()
 
+    st.markdown("**2 · Ajusta los detalles** (la flota y los objetivos):")
     c1, c2, c3 = st.columns(3)
-    c1.number_input("Unidades (drones / agentes)", 1, 300, key="cc_agents")
-    c2.number_input("Puntos / tareas", 1, 200, key="cc_tasks")
-    c3.number_input("Tamaño del área", 50, 500, step=10, key="cc_area")
+    c1.number_input("🚁 Unidades", 1, 300, key="cc_agents")
+    c2.number_input("🎯 Puntos / tareas", 1, 200, key="cc_tasks")
+    c3.number_input("🗺️ Tamaño del área", 50, 500, step=10, key="cc_area")
     c4, c5 = st.columns(2)
-    c4.selectbox("Estrategia", list(STRATEGIES), key="cc_strategy")
-    c5.number_input("Seed", 0, key="cc_seed")
+    c4.selectbox("🧠 Estrategia (cómo coordina)", list(STRATEGIES), key="cc_strategy")
+    c5.number_input("🎲 Seed (el azar)", 0, key="cc_seed")
 
-    st.checkbox("⏱️ Hay plazos / urgencias (las tareas pueden fallar)", key="cc_deadlines")
-    st.checkbox("⚠️ Hay fallos / pérdidas de unidades", key="cc_failures")
-    st.checkbox("💥 Un golpe puntual (ataque/tormenta) tumba a muchas a la vez", key="cc_shock")
-    st.checkbox("📥 Llegan tareas nuevas durante la misión", key="cc_arrivals")
-    st.checkbox("🔁 Re-planificación continua (preempción de rescate)", key="cc_replan")
+    st.markdown("**¿Qué puede salir mal?**")
+    cc = st.columns(2)
+    cc[0].checkbox("⏱️ Plazos / urgencias (las tareas pueden fallar)", key="cc_deadlines")
+    cc[0].checkbox("⚠️ Fallos / pérdidas de unidades", key="cc_failures")
+    cc[1].checkbox("💥 Una onda de choque tumba a muchas de golpe", key="cc_shock")
+    cc[1].checkbox("📥 Llegan tareas nuevas durante la misión", key="cc_arrivals")
+    st.checkbox("🔁 Re-planificación continua (redirige unidades para rescatar tareas)",
+                key="cc_replan")
 
+    st.info("Vas a simular: " + _cc_summary())
+
+    st.markdown("**3 · Lánzalo** 👇")
     if st.button("▶ Ejecutar mi caso", type="primary", use_container_width=True):
         sc = _build_custom_scenario(
             st.session_state.cc_agents, st.session_state.cc_tasks, st.session_state.cc_area,
             st.session_state.cc_seed, st.session_state.cc_deadlines,
             st.session_state.cc_failures, st.session_state.cc_shock,
             st.session_state.cc_arrivals)
-        strat = st.session_state.cc_strategy
-        st.session_state["rec"] = run_scenario(sc, strat, replan=st.session_state.cc_replan)
+        st.session_state["rec"] = run_scenario(sc, st.session_state.cc_strategy,
+                                               replan=st.session_state.cc_replan)
         st.session_state["scenario"] = sc
         st.session_state["replan"] = st.session_state.cc_replan
         st.session_state["rec_label"] = (
-            f"caso propio · {strat} · {st.session_state.cc_agents} unidades / "
-            f"{st.session_state.cc_tasks} puntos")
-        st.success("✅ Caso ejecutado. Abre la pestaña **🛰 Misión** para verlo en "
-                   "movimiento, y **📊 Comparar** para probar todas las estrategias en él.")
+            f"tu caso · {st.session_state.cc_strategy} · {st.session_state.cc_agents} "
+            f"unidades / {st.session_state.cc_tasks} puntos")
+        st.rerun()
+
+    # show the result right here so a first-timer doesn't have to switch tabs
+    sc = st.session_state.get("scenario")
+    if sc is not None and getattr(sc, "name", "") == "custom" and "rec" in st.session_state:
+        rec = st.session_state["rec"]
+        st.divider()
+        st.markdown("#### 🛰 Resultado de tu caso")
+        _render_mission(rec, sc, key_prefix="cc_")
+        comp = rec.final_metrics["mission_completion"]
+        if comp >= 0.999:
+            st.caption("💡 Salió redondo. Sube las **tareas** o baja las **unidades** "
+                       "para encontrar el punto de ruptura.")
+        elif comp < 0.8:
+            st.caption("💡 Se perdió bastante misión. Prueba con **más unidades**, la "
+                       "estrategia **triage**, o activa **re-planificación** y vuelve a lanzar.")
+        else:
+            st.caption("💡 Prueba a cambiar la **estrategia** o a comparar las 5 en la "
+                       "pestaña 📊 con este mismo caso.")
 
 
 def _render_guide() -> None:
@@ -837,7 +893,9 @@ def _event_feed(rec: RunRecording, scenario: Scenario) -> str:
     return "\n".join(f"- **tick {tk}** · {txt}" for tk, txt in rows[:30])
 
 
-def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
+def _render_mission(rec: RunRecording, scenario: Scenario, key_prefix: str = "") -> None:
+    # key_prefix namespaces the chart/table ids so this view can render in two
+    # tabs at once (Misión + the inline result in "Tu caso") without id clashes.
     st.caption("Resultado de: " + st.session_state.get("rec_label", ""))
 
     level, story = _narrative(rec, scenario)
@@ -867,7 +925,7 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
         _animated_map_figure(rec, _world_w(rec), _world_h(rec),
                              frame_ms=int(st.session_state.get("play_ms", 130)),
                              shock_tick=scenario.shock_tick),
-        use_container_width=True,
+        use_container_width=True, key=f"{key_prefix}map",
     )
     st.caption("**Drones** (color = qué hacen, forma = ▲ en ruta / ◆ en una tarea / "
                "● libre, tamaño = recursos): 🟩 trabajando · 🟦 yendo · ⬜ libre · "
@@ -880,7 +938,7 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
         st.markdown("**Progreso a lo largo del tiempo**")
         st.plotly_chart(
             _progress_figure(rec, len(rec.frames) - 1, scenario.shock_tick),
-            use_container_width=True,
+            use_container_width=True, key=f"{key_prefix}prog",
         )
         st.caption("Verde = % de misión · azul = flota viva · raya roja = onda de choque.")
     with right:
@@ -890,7 +948,7 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
             ev = pd.DataFrame(rec.events)
             if not ev.empty:
                 st.dataframe(ev.tail(300), use_container_width=True, height=240,
-                             hide_index=True)
+                             hide_index=True, key=f"{key_prefix}evt")
 
 
 _STRAT_COLOR = {

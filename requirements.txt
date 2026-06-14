@@ -2,6 +2,8 @@
 # (The package itself is imported via src/ in streamlit_app.py, so only the
 # dashboard's runtime libraries are needed here.)
 numpy>=1.26
-streamlit>=1.35
+# Cap below 1.59: later releases remove `use_container_width` (deprecated after
+# 2025-12-31), which the dashboard still uses. Pinned to a range tested green.
+streamlit>=1.35,<1.59
 plotly>=5.18
 pandas>=2.0
