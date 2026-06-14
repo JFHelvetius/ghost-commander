@@ -348,9 +348,12 @@ class Simulation:
         return self._next_arrival < len(self._arrivals)
 
     def _expire_overdue(self, tick: int) -> None:
-        """Fail any open task whose deadline has passed — a mission loss."""
+        """Fail any open task whose deadline has passed — a mission loss.
+
+        A locked task (unmet prerequisites) cannot fail: it has not been allowed
+        to start yet, so its deadline does not run while it waits."""
         for task in self.world.tasks.values():
-            if not task.open or not task.is_overdue(tick):
+            if not task.open or not task.is_overdue(tick) or not self.world.is_unlocked(task):
                 continue
             task.status = TaskStatus.FAILED
             task.failed_tick = tick

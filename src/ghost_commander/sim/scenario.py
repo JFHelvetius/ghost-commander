@@ -96,6 +96,12 @@ class Scenario:
     agent_speed_spread: float = 0.0
     agent_capacity_spread: float = 0.0
 
+    # precedence (opt-in): each task (after the first) depends on an earlier one
+    # with probability ``precedence_fraction`` — it stays locked until that
+    # prerequisite is DONE. 0 = no dependencies (no extra RNG draw -> digests
+    # unchanged). Only earlier ids are referenced, so the graph is acyclic.
+    precedence_fraction: float = 0.0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -127,6 +133,15 @@ class Scenario:
         # drawn when enabled, so n_bases == 0 keeps existing digests intact.
         for _ in range(self.n_bases):
             world.bases.append((rng.uniform(0, self.width), rng.uniform(0, self.height)))
+
+        # Precedence assigned last and only when enabled, so it never perturbs
+        # the layout of existing scenarios. Each task may depend on one earlier
+        # task (acyclic by construction).
+        if self.precedence_fraction > 0:
+            ids = sorted(world.tasks)
+            for j in ids[1:]:
+                if rng.chance(self.precedence_fraction):
+                    world.tasks[j].requires = (ids[rng.integers(0, ids.index(j))],)
         return world
 
     def schedule_arrivals(self, root: RandomSource) -> list[Task]:
@@ -502,6 +517,22 @@ PRESETS: dict[str, Scenario] = {
         shock_failure_rate=0.30,
         deadline_slack_factor=3.0,
         deadline_slack_base=14,
+    ),
+    # Phased operation: ~45% of tasks depend on an earlier one ("secure before
+    # resupply") — they stay locked until their prerequisite is done, so the
+    # mission unfolds in waves the commander unlocks by clearing the right tasks
+    # first. Under attrition, dithering on the wrong tasks stalls whole branches.
+    "phased": Scenario(
+        name="phased",
+        seed=42,
+        n_agents=45,
+        n_tasks=55,
+        max_ticks=320,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=22,
+        shock_failure_rate=0.30,
+        precedence_fraction=0.45,
     ),
 }
 

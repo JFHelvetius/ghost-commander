@@ -113,6 +113,8 @@ _SCENARIO_DIFF = {
                  "la vez (p. ej. recon + médico) — la combinación correcta, no solo cuerpos.",
     "mixedfleet": "**Flota heterogénea**: unidades rápidas/lentas y ligeras/pesadas; "
                   "importa *qué* unidad encaja, no solo cuál está cerca.",
+    "phased": "**Operación por fases**: ~45% de tareas dependen de otra (bloqueadas "
+              "hasta que se complete su requisito). Hay que desbloquear en el orden bueno.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -171,6 +173,10 @@ _SCENARIO_DESC = {
     "mixedfleet": "**Flota heterogénea**: cada unidad tiene velocidad y capacidad de "
                   "trabajo distintas (exploradores rápidos vs. unidades pesadas). Bajo "
                   "plazos premia a quien razona el tiempo real de cada unidad (triage).",
+    "phased": "**Operación por fases (precedencias)**: ~45% de las tareas dependen de "
+              "otra y quedan *bloqueadas* (🔒) hasta que su requisito esté hecho. La "
+              "misión se desbloquea en oleadas; perder el tiempo en lo que no toca "
+              "atasca ramas enteras.",
 }
 
 
@@ -227,6 +233,7 @@ def _frame_scatters(
     # --- tasks: ONE constant-length trace over every task id that ever exists.
     # Tasks never move, so positions are constant -> nothing glides; only colour
     # and symbol change (snap, which is correct). Not-yet-arrived tasks are None.
+    done_ids = {tid for tid, t in tmap.items() if t["status"] == "done"}
     tx_, ty_, tsym, tcol, tsize, topac, ttxt = [], [], [], [], [], [], []
     for tid in task_ids:
         t = tmap.get(tid)
@@ -236,11 +243,15 @@ def _frame_scatters(
             continue
         status = t["status"]
         prog = float(t.get("progress", 0.0))
+        locked = status not in ("done", "failed") and any(
+            r not in done_ids for r in t.get("requires", []))
         tx_.append(t["x"]); ty_.append(t["y"])
         if status == "done":
             tsym.append("square"); tcol.append("#2a6b48"); topac.append(0.85)
         elif status == "failed":
             tsym.append("x-thin"); tcol.append("#e0484f"); topac.append(1.0)
+        elif locked:
+            tsym.append("square-open"); tcol.append("#5a6072"); topac.append(0.55)
         else:
             # being worked: amber -> green as it fills, brightening with progress
             tsym.append("square")
@@ -248,6 +259,7 @@ def _frame_scatters(
             topac.append(0.5 + 0.5 * prog)
         tsize.append(_PRIORITY_SIZE.get(t["priority"], 12))
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
+                    + (" · 🔒 bloqueada" if locked else "")
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
                     + (f" · mix:{'+'.join(t['required_skills'])}" if t.get("required_skills") else "")
                     + (f" · equipo:{t['required_agents']}"
@@ -977,8 +989,8 @@ def _render_mission(rec: RunRecording, scenario: Scenario, key_prefix: str = "")
     st.caption("**Drones** (color = qué hacen, forma = ▲ en ruta / ◆ en una tarea / "
                "● libre, tamaño = recursos): 🟩 trabajando · 🟦 yendo · ⬜ libre · "
                "🟪 recargando. **Tareas**: cuadrados que pasan de 🟧 ámbar a 🟩 verde "
-               "según se completan · ✖️ roja = fallada · 🔷 = base. Las líneas azules "
-               "son las asignaciones del comandante.")
+               "según se completan · ▫️ gris = 🔒 bloqueada (espera un requisito) · "
+               "✖️ roja = fallada · 🔷 = base. Las líneas azules son las asignaciones.")
 
     left, right = st.columns([3, 2])
     with left:

@@ -49,14 +49,22 @@ class World:
         """Open tasks that still have an unfilled slot."""
         return [t for t in self.tasks.values() if self.needed_slots(t)]
 
+    def is_unlocked(self, task: Task) -> bool:
+        """True if all of ``task``'s prerequisites are DONE (or it has none)."""
+        return all(
+            r in self.tasks and self.tasks[r].status is TaskStatus.DONE
+            for r in task.requires
+        )
+
     def needed_slots(self, task: Task) -> list[str | None]:
         """The slots this task still needs, one per entry, as a skill or ``None``.
 
-        Unifies the three cases: a plain task -> ``[None] * free`` (any agent); a
+        Unifies the cases: a plain task -> ``[None] * free`` (any agent); a
         single-skill task -> ``[skill] * free``; a mixed task (``required_skills``)
-        -> the list of required skills not yet covered by an assigned agent.
+        -> required skills not yet covered. A locked task (unmet prerequisites)
+        needs nothing yet, so every strategy and the engine skip it automatically.
         """
-        if not task.open:
+        if not task.open or not self.is_unlocked(task):
             return []
         if task.required_skills:
             covered = {

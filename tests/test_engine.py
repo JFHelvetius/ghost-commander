@@ -300,3 +300,38 @@ def test_mixedfleet_runs_and_greedy_is_not_best() -> None:
     greedy = run_scenario(PRESETS["mixedfleet"], "greedy").final_metrics["mission_completion"]
     triage = run_scenario(PRESETS["mixedfleet"], "triage").final_metrics["mission_completion"]
     assert triage >= greedy
+
+
+def test_locked_task_is_not_assignable_until_prereq_done() -> None:
+    from ghost_commander.domain import Task, TaskStatus, World
+
+    w = World(width=10, height=10)
+    w.add_task(Task(id=0, x=1, y=1))                  # prerequisite
+    w.add_task(Task(id=1, x=2, y=2, requires=(0,)))   # depends on task 0
+    assert w.is_unlocked(w.tasks[0])
+    assert not w.is_unlocked(w.tasks[1])
+    assert w.needed_slots(w.tasks[1]) == []           # locked -> no slots
+    assert w.tasks[1] not in w.assignable_tasks()
+    w.tasks[0].status = TaskStatus.DONE               # clear the prerequisite
+    assert w.is_unlocked(w.tasks[1])
+    assert w.needed_slots(w.tasks[1]) == [None]       # now assignable
+    assert w.tasks[1] in w.assignable_tasks()
+
+
+def test_locked_task_does_not_fail_while_waiting() -> None:
+    from ghost_commander.domain import Task, TaskStatus, World
+
+    sim = Simulation(Scenario(seed=1, n_agents=1, n_tasks=1), "global")
+    world = World(width=10, height=10)
+    world.add_task(Task(id=0, x=1, y=1))  # never completed
+    world.add_task(Task(id=1, x=2, y=2, requires=(0,), deadline_tick=1))
+    sim.world = world
+    sim._expire_overdue(100)  # well past the deadline
+    assert world.tasks[1].status is not TaskStatus.FAILED  # locked -> can't fail
+
+
+def test_phased_has_dependencies_and_no_precedence_by_default() -> None:
+    phased = Simulation(PRESETS["phased"], "global")
+    assert any(t.requires for t in phased.world.tasks.values())
+    plain = Simulation(Scenario(seed=2, n_agents=20, n_tasks=15), "global")
+    assert all(not t.requires for t in plain.world.tasks.values())

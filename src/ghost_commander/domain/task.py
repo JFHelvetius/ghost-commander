@@ -57,6 +57,9 @@ class Task:
     # dynamic priority: every ``escalate_every`` ticks it lingers, its effective
     # priority rises by one (capped at VITAL). None = static priority.
     escalate_every: int | None = None
+    # precedence: ids of tasks that must be DONE before this one can start. While
+    # any prerequisite is unmet the task is *locked* (not assignable, can't fail).
+    requires: tuple[int, ...] = ()
     # bookkeeping
     remaining: float = field(default=0.0)
     created_tick: int = 0
@@ -112,6 +115,7 @@ class Task:
             "required_skill": self.required_skill,
             "required_skills": list(self.required_skills),
             "required_agents": self.required_agents,
+            "requires": list(self.requires),
         }
 
 
