@@ -17,7 +17,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ghost_commander.coordination import STRATEGIES
-from ghost_commander.sim import PRESETS, Scenario, compare_strategies, run_scenario
+from ghost_commander.sim import PRESETS, Scenario, StrategyResult, run_scenario
 from ghost_commander.sim.recorder import RunRecording
 
 _BG = "#0e1117"
@@ -392,7 +392,11 @@ _CSS = """
 
 
 # ----------------------------------------------------------------------- sidebar
-def _sidebar() -> tuple[Scenario, str]:
+_DUR = {"Normal": 1, "Largo (2×)": 2, "Épico (3×)": 3}
+
+
+def _sidebar() -> tuple[Scenario, str, bool]:
+    qp = st.query_params  # shareable URL: defaults come from ?preset=&strategy=&...
     st.sidebar.markdown(
         f'<div class="gc-side-logo">{_logo(34)}<span>GHOST COMMANDER</span></div>',
         unsafe_allow_html=True,
@@ -402,50 +406,58 @@ def _sidebar() -> tuple[Scenario, str]:
     with st.sidebar.expander("ℹ️ Guía rápida de los controles"):
         st.markdown(
             "- **Escenario** = la *situación* a la que se enfrenta la flota. Cada "
-            "uno mete un reto distinto (onda de choque, plazos, especialistas, "
-            "tareas que llegan, bases de recarga…). Lee la descripción que sale "
-            "al elegirlo.\n"
-            "- **Estrategia** = el *cerebro* del comandante, su forma de repartir "
-            "el trabajo. Compáralas en la pestaña 📊.\n"
-            "- **Seed** = la semilla del azar. **Misma seed = misma misión** "
-            "(posiciones, fallos…), bit a bit. Cámbiala para ver *otra* partida "
-            "del mismo escenario.\n"
-            "- **Duración** = estira la misión en el tiempo (más pasos), sin "
-            "cambiar el resultado. **Velocidad** = solo lo rápido que se reproduce.\n"
-            "- **Ajustes finos** = tamaño de flota, nº de tareas y límite de tiempo, "
-            "por si quieres trastear."
+            "uno mete un reto distinto. Lee la descripción que sale al elegirlo.\n"
+            "- **Estrategia** = el *cerebro* del comandante. Compáralas en 📊.\n"
+            "- **Seed** = la semilla del azar. **Misma seed = misma misión**, bit a "
+            "bit. Cámbiala para ver *otra* partida del mismo escenario.\n"
+            "- **Re-planificación** = el comandante re-evalúa la flota cada tick y "
+            "redirige agentes en ruta para rescatar tareas a punto de expirar.\n"
+            "- **Duración** = estira la misión en el tiempo. **Velocidad** = solo lo "
+            "rápido que se reproduce.\n"
+            "- **Ajustes finos** = flota, tareas y límite de tiempo."
         )
 
+    presets = list(PRESETS)
+    pidx = presets.index(qp["preset"]) if qp.get("preset") in PRESETS else 0
     preset_name = st.sidebar.selectbox(
-        "Escenario (la situación)", list(PRESETS), index=0,
+        "Escenario (la situación)", presets, index=pidx,
         help="Cada escenario plantea un reto distinto. Elige uno y lee su "
              "descripción justo debajo.")
     base = PRESETS[preset_name]
     st.sidebar.info(_SCENARIO_DESC.get(preset_name, ""))
 
+    strats = list(STRATEGIES)
+    sidx = strats.index(qp["strategy"]) if qp.get("strategy") in STRATEGIES \
+        else strats.index("global")
     strategy = st.sidebar.selectbox(
-        "Estrategia (el cerebro del comandante)", list(STRATEGIES),
-        index=list(STRATEGIES).index("global"),
-        help="Cómo reparte el trabajo el comandante. greedy: cada unidad va a lo "
-             "más cercano (local) · auction y global: miran a toda la flota a la "
-             "vez · triage: además tiene en cuenta los plazos. Compáralas en 📊.")
+        "Estrategia (el cerebro del comandante)", strats, index=sidx,
+        help="greedy: lo más cercano (local) · auction/global: miran toda la flota "
+             "· triage: tiene en cuenta los plazos · optimal: óptimo exacto por "
+             "tick (baseline). Compáralas en 📊.")
+    try:
+        seed_default = int(qp.get("seed", base.seed))
+    except (TypeError, ValueError):
+        seed_default = int(base.seed)
     seed = st.sidebar.number_input(
-        "Seed (semilla del azar)", min_value=0, value=int(base.seed), step=1,
-        help="Fija el azar de la misión. Misma seed = misma partida idéntica. "
-             "Cámbiala para ver otra distribución del mismo escenario.")
+        "Seed (semilla del azar)", min_value=0, value=seed_default, step=1,
+        help="Fija el azar de la misión. Misma seed = misma partida idéntica.")
 
+    replan = st.sidebar.checkbox(
+        "Re-planificación continua", value=(qp.get("replan") == "1"),
+        help="Preempción de rescate: cada tick el comandante puede redirigir a un "
+             "agente en ruta para salvar una tarea a punto de expirar. Ayuda bajo "
+             "plazos (rush, specialist); mira la diferencia en la pestaña 📊.")
+
+    dur_value = qp["dur"] if qp.get("dur") in _DUR else "Normal"
     dur_label = st.sidebar.select_slider(
-        "Duración de la misión", options=["Normal", "Largo (2×)", "Épico (3×)"],
-        value="Normal",
-        help="Estira la misión en el tiempo: la misma situación se desarrolla a lo "
-             "largo de más pasos (agentes más lentos, todo repartido). El resultado "
-             "es prácticamente el mismo; solo cambia cuánto tarda en verse.")
-    time_scale = {"Normal": 1, "Largo (2×)": 2, "Épico (3×)": 3}[dur_label]
+        "Duración de la misión", options=list(_DUR), value=dur_value,
+        help="Estira la misión en el tiempo (más pasos). El resultado es "
+             "prácticamente el mismo; solo cambia cuánto tarda en verse.")
+    time_scale = _DUR[dur_label]
 
     play_label = st.sidebar.select_slider(
         "Velocidad de reproducción", options=["Lento", "Normal", "Rápido"],
-        value="Normal", help="Solo cambia lo rápido que va la animación; no afecta "
-             "a la simulación ni al resultado.")
+        value="Normal", help="Solo cambia lo rápido que va la animación.")
     st.session_state["play_ms"] = {"Lento": 220, "Normal": 130, "Rápido": 70}[play_label]
 
     with st.sidebar.expander("Ajustes finos (opcional)"):
@@ -456,17 +468,23 @@ def _sidebar() -> tuple[Scenario, str]:
                              help="Cuántas unidades autónomas salen a la misión.")
         n_tasks = st.slider("Tareas iniciales (trabajos a hacer)", 5, 120,
                             int(base.n_tasks), step=5,
-                            help="Cuántas tareas hay en el mapa al empezar (algunos "
-                                 "escenarios añaden más sobre la marcha).")
+                            help="Cuántas tareas hay al empezar (algunos escenarios "
+                                 "añaden más sobre la marcha).")
         max_ticks = st.slider("Límite de tiempo (máx. pasos)", 100, 2000,
                               int(base.max_ticks), step=50,
                               help="Si la misión no termina antes, se corta aquí.")
+
+    # reflect the current config in the URL so a run can be shared by link
+    st.query_params.update({
+        "preset": preset_name, "strategy": strategy, "seed": str(int(seed)),
+        "replan": "1" if replan else "0", "dur": dur_label,
+    })
 
     scenario = dataclasses.replace(
         base, seed=int(seed), n_agents=int(n_agents), n_tasks=int(n_tasks),
         max_ticks=int(max_ticks),
     )
-    return _time_dilate(scenario, time_scale), strategy
+    return _time_dilate(scenario, time_scale), strategy, replan
 
 
 def _time_dilate(sc: Scenario, k: int) -> Scenario:
@@ -494,18 +512,19 @@ def _time_dilate(sc: Scenario, k: int) -> Scenario:
 def main() -> None:
     st.set_page_config(page_title="Ghost Commander", page_icon="🧭", layout="wide")
     st.markdown(_CSS, unsafe_allow_html=True)
-    scenario, strategy = _sidebar()
+    scenario, strategy, replan = _sidebar()
 
     run_clicked = st.sidebar.button("▶ Ejecutar misión", type="primary",
                                     use_container_width=True)
     # Auto-run on first load so a freshly deployed app shows something immediately.
     if run_clicked or "rec" not in st.session_state:
         with st.spinner("Simulando…"):
-            st.session_state["rec"] = run_scenario(scenario, strategy)
+            st.session_state["rec"] = run_scenario(scenario, strategy, replan=replan)
             st.session_state["scenario"] = scenario
             st.session_state["rec_label"] = (
                 f"{scenario.name} · {strategy} · seed {scenario.seed} · "
                 f"{scenario.n_agents} agentes"
+                + (" · re-planificación" if replan else "")
             )
 
     st.sidebar.markdown(
@@ -529,7 +548,7 @@ def main() -> None:
     with tab_mission:
         _render_mission(st.session_state["rec"], st.session_state.get("scenario", scenario))
     with tab_compare:
-        _render_compare(scenario)
+        _render_compare(scenario, replan)
     with tab_guide:
         _render_guide()
 
@@ -658,6 +677,51 @@ def _narrative(rec: RunRecording, scenario: Scenario) -> tuple[str, str]:
     return "warning", " ".join(p)
 
 
+def _event_feed(rec: RunRecording, scenario: Scenario) -> str:
+    """A readable, aggregated 'what happened' feed instead of raw event rows."""
+    from collections import defaultdict
+
+    shock: dict[int, int] = defaultdict(int)
+    losses: dict[int, int] = defaultdict(int)
+    task_fail: dict[int, int] = defaultdict(int)
+    arrivals: dict[int, int] = defaultdict(int)
+    end: tuple[int, str] | None = None
+    for e in rec.events:
+        t, tick = e["type"], e["tick"]
+        if t == "agent.failed":
+            (shock if e.get("p_kind") == "shock" else losses)[tick] += 1
+        elif t == "task.failed":
+            task_fail[tick] += 1
+        elif t == "task.created":
+            arrivals[tick] += 1
+        elif t == "mission.complete":
+            end = (tick, "🏁 **Misión completada**: todas las tareas hechas.")
+        elif t == "mission.degraded":
+            end = (tick, "🏳️ **Misión degradada**: se agotó el tiempo con tareas sin "
+                   "completar.")
+
+    rows: list[tuple[int, str]] = []
+    for tk, n in shock.items():
+        rows.append((tk, f"💥 **{n} agentes** caídos por la onda de choque"))
+    for tk, n in losses.items():
+        if n >= 3:  # only notable loss spikes, to avoid one-liner spam
+            rows.append((tk, f"⚠️ {n} agentes perdidos"))
+    for tk, n in task_fail.items():
+        rows.append((tk, f"⏱️ {n} tarea(s) **fallada(s)** (deadline perdido)"))
+    if arrivals:
+        a0, a1 = min(arrivals), max(arrivals)
+        total = sum(arrivals.values())
+        rows.append((a0, f"📥 empiezan a llegar tareas nuevas (**{total}** entre los "
+                     f"ticks {a0}–{a1})"))
+    if end:
+        rows.append(end)
+
+    rows.sort(key=lambda r: r[0])
+    if not rows:
+        return "_Misión tranquila: sin incidencias destacables._"
+    return "\n".join(f"- **tick {tk}** · {txt}" for tk, txt in rows[:30])
+
+
 def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
     st.caption("Resultado de: " + st.session_state.get("rec_label", ""))
 
@@ -705,64 +769,111 @@ def _render_mission(rec: RunRecording, scenario: Scenario) -> None:
         )
         st.caption("Verde = % de misión · azul = flota viva · raya roja = onda de choque.")
     with right:
-        st.markdown("**Registro de eventos**")
-        ev = pd.DataFrame(rec.events)
-        if not ev.empty:
-            notable = ev[ev["severity"].isin(["WARN", "ERROR", "CRITICAL", "INFO"])]
-            st.dataframe(notable.tail(200), use_container_width=True, height=300,
-                         hide_index=True)
+        st.markdown("**Qué pasó, en orden**")
+        st.markdown(_event_feed(rec, scenario))
+        with st.expander("Registro técnico completo"):
+            ev = pd.DataFrame(rec.events)
+            if not ev.empty:
+                st.dataframe(ev.tail(300), use_container_width=True, height=240,
+                             hide_index=True)
 
 
-def _render_compare(scenario: Scenario) -> None:
+_STRAT_COLOR = {
+    "greedy": "#e0484f", "auction": "#f4b942", "global": "#3aa0ff",
+    "triage": "#27d17c", "optimal": "#b06cff",
+}
+
+
+def _render_compare(scenario: Scenario, replan: bool = False) -> None:
     st.markdown(
-        "**¿La forma de repartir el trabajo cambia el resultado?** Aquí corremos la "
-        f"**misma misión** (escenario **{scenario.name}**, {scenario.n_agents} agentes) "
-        "con cada una de las 4 estrategias de coordinación y comparamos cuánto salva "
-        "cada una. Como todo es determinista, lo único que cambia es el algoritmo — "
-        "así que la diferencia es justa.\n\n"
-        "- **greedy**: cada unidad va a la tarea buena más cercana (decisión local).\n"
-        "- **auction / global**: reparten mirando a toda la flota a la vez.\n"
-        "- **triage**: además mira los *plazos* y no malgasta unidades en tareas que "
-        "ya no llegan a tiempo."
+        "**¿La forma de repartir el trabajo cambia el resultado?** Corremos la "
+        f"**misma misión** (escenario **{scenario.name}**, {scenario.n_agents} agentes"
+        f"{', con re-planificación' if replan else ''}) con cada estrategia. Como todo "
+        "es determinista, lo único que cambia es el algoritmo — la diferencia es justa.\n\n"
+        "- **greedy**: la tarea buena más cercana (decisión local).\n"
+        "- **auction / global**: reparten mirando a toda la flota.\n"
+        "- **triage**: además mira los *plazos*.\n"
+        "- **optimal**: el óptimo exacto por tick (techo de referencia)."
     )
     if not st.button(f"▶ Comparar las {len(STRATEGIES)} estrategias",
                      type="primary", use_container_width=True):
         return
     with st.spinner("Corriendo " + " / ".join(STRATEGIES) + "…"):
-        results = compare_strategies(scenario)
+        recs = {name: run_scenario(scenario, name, replan=replan) for name in STRATEGIES}
+    results = sorted(
+        (StrategyResult.from_recording(recs[n]) for n in STRATEGIES),
+        key=lambda r: (-r.completion, r.ticks_to_finish or 10**9, r.reassignments),
+    )
+    opt = recs["optimal"].final_metrics["mission_completion"] or 1e-9
 
     df = pd.DataFrame([
         {
             "estrategia": r.strategy,
             "misión %": round(r.completion * 100, 1),
+            "% del óptimo": round(r.completion / opt * 100),
             "tareas": f"{r.tasks_done}/{r.tasks_total}",
             "falladas": r.tasks_failed,
             "ticks": r.ticks_to_finish if r.ticks_to_finish is not None else "—",
-            "agentes perdidos": r.agents_lost,
-            "reasignaciones": r.reassignments,
+            "perdidos": r.agents_lost,
+            "reasign.": r.reassignments,
         }
         for r in results
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-    fig = go.Figure(go.Bar(
-        x=[r.strategy for r in results],
-        y=[r.completion * 100 for r in results],
+    bar = go.Figure(go.Bar(
+        x=[r.strategy for r in results], y=[r.completion * 100 for r in results],
         marker_color=_RANK_COLORS[: len(results)],
         text=[f"{r.completion*100:.0f}%<br><span style='font-size:10px'>"
               f"{r.tasks_failed} falladas</span>" for r in results],
         textposition="outside",
     ))
-    fig.update_layout(
-        title="Éxito de misión por estrategia (ponderado por prioridad)", height=380,
+    bar.update_layout(
+        title="Éxito de misión por estrategia (ponderado por prioridad)", height=340,
         plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
-        yaxis=dict(range=[0, 112], title="misión ponderada %", gridcolor="#1c2230"),
+        yaxis=dict(range=[0, 112], title="misión %", gridcolor="#1c2230"),
     )
-    st.plotly_chart(fig, use_container_width=True)
-    st.success(f"🏆 Ganador en este escenario: **{results[0].strategy}** "
-               f"({results[0].completion*100:.0f}%)")
-    st.caption("El ganador cambia según la misión: greedy suele ser el peor bajo "
-               "presión; triage destaca cuando los deadlines aprietan.")
+    st.plotly_chart(bar, use_container_width=True)
+
+    # how each strategy progresses over time — not just the endpoint
+    lines = go.Figure()
+    for name in STRATEGIES:
+        h = pd.DataFrame(recs[name].metrics_history)
+        lines.add_trace(go.Scatter(
+            x=h["tick"], y=h["mission_completion"] * 100, name=name,
+            line=dict(color=_STRAT_COLOR.get(name, "#cccccc"), width=2)))
+    if scenario.shock_tick is not None:
+        lines.add_vline(x=scenario.shock_tick, line=dict(color="#e0484f", width=1, dash="dash"),
+                        annotation_text="shock", annotation_font_color="#e0484f")
+    lines.update_layout(
+        title="Progreso de misión en el tiempo (cómo llega cada una)", height=320,
+        plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
+        legend=dict(orientation="h", y=1.12, font=dict(size=10)),
+        xaxis=dict(title="tick", gridcolor="#1c2230"),
+        yaxis=dict(title="misión %", range=[0, 105], gridcolor="#1c2230"))
+    st.plotly_chart(lines, use_container_width=True)
+
+    st.success("🏆 " + _interpret_compare(results, opt))
+
+
+def _interpret_compare(results: list, opt: float) -> str:
+    """One-sentence plain-language read of the comparison."""
+    win, worst = results[0], results[-1]
+    by = {r.strategy: r for r in results}
+    parts = [f"Ganó **{win.strategy}** ({win.completion*100:.0f}%)."]
+    if "greedy" in by and by["greedy"].strategy != win.strategy:
+        g = by["greedy"]
+        parts.append(f"**greedy** es de las peores ({g.completion*100:.0f}%"
+                     + (f", {g.tasks_failed} tareas perdidas" if g.tasks_failed else "") + ").")
+    heur = [r for r in results if r.strategy != "optimal"]
+    if heur and opt > 0:
+        lo = min(r.completion / opt * 100 for r in heur)
+        hi = max(r.completion / opt * 100 for r in heur)
+        parts.append(f"Las heurísticas alcanzan **{lo:.0f}–{hi:.0f}%** del óptimo-por-tick.")
+        if hi > 100.5:
+            parts.append("Alguna *supera* al óptimo-por-tick: es **miope** (no mira "
+                         "plazos), y triage sí.")
+    return " ".join(parts)
 
 
 def _world_w(rec: RunRecording) -> float:
