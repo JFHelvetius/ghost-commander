@@ -15,6 +15,7 @@ seed + strategy ⇒ identical recording (``RunRecording.digest``).
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 from ghost_commander.coordination import CoordinationStrategy, make_strategy
@@ -52,8 +53,6 @@ _REPLAN_RISK_WINDOW = 12
 
 def _spare_ticks(agent, task, tick: int) -> int | None:  # noqa: ANN001
     """Slack minus estimated time-to-complete; None if the task has no deadline."""
-    import math
-
     if task.deadline_tick is None:
         return None
     d = agent.distance_to(task.x, task.y)
@@ -87,6 +86,12 @@ class Simulation:
         self._next_arrival = 0
         self.failures = FailureModel(scenario, self.root)
 
+        # partial observability: idle agents sweep a fixed search lattice to
+        # discover unknown tasks (no-op when detection is off).
+        self._detection_range = scenario.detection_range
+        self._waypoints = self._build_search_lattice() if self._detection_range > 0 else []
+        self._search_idx: dict[int, int] = {}
+
         self._record = record
         self.recording = RunRecording.from_scenario(scenario, self.strategy.name, replan)
         if record:
@@ -113,6 +118,7 @@ class Simulation:
     def run(self) -> RunRecording:
         """Run until every task is done or ``max_ticks`` is reached."""
         # record the initial frame (tick 0) before any motion
+        self._detect(0)  # reveal whatever is already within sensor range at start
         self._snapshot()
         while not self._finished and self.clock.tick < self.scenario.max_ticks:
             self.step()
@@ -136,6 +142,8 @@ class Simulation:
             self._replan(tick)
         self._reassign(tick)
         self._advance_agents(tick)
+        self._explore(tick)
+        self._detect(tick)
         self._apply_failures(tick)
         self._expire_overdue(tick)
         self._revive_recurring(tick)
@@ -356,6 +364,66 @@ class Simulation:
     def _arrivals_pending(self) -> bool:
         return self._next_arrival < len(self._arrivals)
 
+    def _build_search_lattice(self) -> list[tuple[float, float]]:
+        """A boustrophedon (snake) raster of waypoints covering the arena, spaced
+        by the sensor range so traversing it sweeps the whole field. Deterministic
+        — the search pattern is fixed, only which agents walk which leg varies."""
+        w, h, r = self.world.width, self.world.height, self._detection_range
+        cols = max(1, math.ceil(w / r))
+        rows = max(1, math.ceil(h / r))
+        pts: list[tuple[float, float]] = []
+        for row in range(rows):
+            y = (row + 0.5) * h / rows
+            order = range(cols) if row % 2 == 0 else range(cols - 1, -1, -1)
+            pts.extend(((col + 0.5) * w / cols, y) for col in order)
+        return pts
+
+    def _explore(self, tick: int) -> None:
+        """Move still-idle agents along the search lattice to uncover unknown tasks.
+
+        Each idle agent walks toward its current waypoint and advances to the next
+        leg once within sensor range; agents start spread evenly along the route so
+        the fleet fans out. Loitering search keeps the agent IDLE (so a freshly
+        detected task can be assigned to it next tick) and does not drain the work
+        budget — the cost of searching is the *time* spent not working."""
+        if self._detection_range <= 0 or not self._waypoints:
+            return
+        wps = self._waypoints
+        n = max(1, self.scenario.n_agents)
+        for agent in self.world.alive_agents():
+            if agent.status is not AgentStatus.IDLE or agent.task_id is not None:
+                continue
+            idx = self._search_idx.get(agent.id)
+            if idx is None:
+                idx = (agent.id * len(wps) // n) % len(wps)  # fan out by id
+            wx, wy = wps[idx]
+            if agent.distance_to(wx, wy) <= self._detection_range:
+                idx = (idx + 1) % len(wps)  # leg covered -> move to the next
+                wx, wy = wps[idx]
+            self._search_idx[agent.id] = idx
+            agent.move_toward(wx, wy)
+
+    def _detect(self, tick: int) -> None:
+        """Reveal any unknown open task within sensor range of some alive agent.
+
+        Detection is pure geometry (no RNG): the same positions always reveal the
+        same tasks, so detection scenarios stay perfectly reproducible."""
+        if self._detection_range <= 0:
+            return
+        agents = self.world.alive_agents()
+        for task in self.world.tasks.values():
+            if task.detected or not task.open:
+                continue
+            if any(a.distance_to(task.x, task.y) <= self._detection_range for a in agents):
+                task.detected = True
+                self.bus.emit(
+                    EventType.TASK_DETECTED,
+                    source="sensors",
+                    sim_tick=tick,
+                    task=task.id,
+                    priority=int(task.priority),
+                )
+
     def _revive_recurring(self, tick: int) -> None:
         """Persistent monitoring: a recurring point that was serviced ``revisit_every``
         ticks ago returns to the pool, so coverage must be actively maintained."""
@@ -373,7 +441,8 @@ class Simulation:
         A locked task (unmet prerequisites) cannot fail: it has not been allowed
         to start yet, so its deadline does not run while it waits."""
         for task in self.world.tasks.values():
-            if not task.open or not task.is_overdue(tick) or not self.world.is_unlocked(task):
+            if (not task.open or not task.detected or not task.is_overdue(tick)
+                    or not self.world.is_unlocked(task)):
                 continue
             task.status = TaskStatus.FAILED
             task.failed_tick = tick

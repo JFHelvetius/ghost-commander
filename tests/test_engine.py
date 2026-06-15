@@ -407,6 +407,41 @@ def test_fog_preset_runs_and_completes_mostly() -> None:
     assert 0.5 < m["mission_completion"] <= 1.0
 
 
+def test_detection_starts_tasks_unknown_and_unassignable() -> None:
+    from ghost_commander.domain import Agent, Task, World
+
+    sc = Scenario(seed=3, n_agents=5, n_tasks=20, detection_range=30.0)
+    world = sc.build_world(RandomSource(seed=sc.seed, label="/"))
+    assert all(not t.detected for t in world.tasks.values())  # field starts dark
+    assert world.assignable_tasks() == []                     # nothing to route to
+
+    # an undetected task offers no slots; revealing it makes it assignable
+    w = World(width=10, height=10)
+    w.add_task(Task(id=0, x=1.0, y=1.0, workload=5.0, detected=False))
+    w.add_agent(Agent(id=0, x=1.0, y=1.0))
+    assert w.needed_slots(w.tasks[0]) == []
+    w.tasks[0].detected = True
+    assert w.needed_slots(w.tasks[0]) == [None]
+
+
+def test_search_discovers_everything_and_costs_time() -> None:
+    import dataclasses
+
+    sc = PRESETS["search"]
+    dark = run_scenario(sc, "global")
+    omni = run_scenario(dataclasses.replace(sc, detection_range=0.0), "global")
+    # the dark field is fully explored (almost) and finishing it takes materially
+    # longer than seeing everything from the start — discovery has a real cost.
+    assert dark.final_metrics["mission_completion"] >= 0.85
+    assert (len(dark.frames) - 1) > (len(omni.frames) - 1) * 1.3
+
+
+def test_detection_run_is_reproducible() -> None:
+    sc = Scenario(seed=9, n_agents=12, n_tasks=25, width=200, height=200,
+                  max_ticks=400, detection_range=30.0)
+    assert run_scenario(sc, "global").digest() == run_scenario(sc, "global").digest()
+
+
 def test_compare_robust_distribution() -> None:
     from ghost_commander.sim import compare_robust
 

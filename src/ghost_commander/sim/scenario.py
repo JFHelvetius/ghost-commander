@@ -114,6 +114,14 @@ class Scenario:
     # 0 = perfect information (no extra RNG draw -> existing digests unchanged).
     workload_uncertainty: float = 0.0
 
+    # partial observability / sensor range (opt-in): if >0, tasks start *unknown*
+    # and only become assignable once some agent passes within this distance of
+    # them. The idle fleet must *search* the field to discover work — an
+    # explore-vs-exploit problem. 0 = full observability (no behavior change ->
+    # existing digests unchanged). Modeled cost of searching is time, not fuel
+    # (loitering agents stay IDLE and don't drain the work budget).
+    detection_range: float = 0.0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -210,6 +218,7 @@ class Scenario:
             required_skills=required_skills,
             escalate_every=self.priority_escalation or None,
             revisit_every=self.revisit_every or None,
+            detected=self.detection_range <= 0,  # unknown until sensed when on
         )
 
     @staticmethod
@@ -595,6 +604,24 @@ PRESETS: dict[str, Scenario] = {
         deadline_slack_factor=3.0,
         deadline_slack_base=14,
         workload_uncertainty=0.5,   # true workload within +/-50% of the estimate
+    ),
+    # Partial observability / search: the field is dark — tasks are unknown until
+    # an agent's sensor passes within range, so the idle fleet must sweep a wide
+    # area to *discover* work before it can be assigned. The bottleneck shifts from
+    # allocation to sensing: until a task is found, no strategy can route to it, so
+    # the strategies converge (discovery dominates). An explore-vs-exploit problem.
+    "search": Scenario(
+        name="search",
+        seed=42,
+        n_agents=24,
+        n_tasks=45,
+        width=360.0,
+        height=360.0,
+        max_ticks=600,
+        agent_speed=3.5,
+        random_failure_rate=0.002,
+        shock_tick=None,            # the challenge is the dark field, not attrition
+        detection_range=25.0,       # sensor reach; tasks unknown beyond it
     ),
 }
 

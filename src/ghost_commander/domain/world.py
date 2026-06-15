@@ -62,9 +62,10 @@ class World:
         Unifies the cases: a plain task -> ``[None] * free`` (any agent); a
         single-skill task -> ``[skill] * free``; a mixed task (``required_skills``)
         -> required skills not yet covered. A locked task (unmet prerequisites)
-        needs nothing yet, so every strategy and the engine skip it automatically.
+        or an as-yet-undetected task needs nothing yet, so every strategy and the
+        engine skip it automatically.
         """
-        if not task.open or not self.is_unlocked(task):
+        if not task.open or not task.detected or not self.is_unlocked(task):
             return []
         if task.required_skills:
             covered = {

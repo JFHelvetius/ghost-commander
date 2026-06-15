@@ -161,7 +161,10 @@ heterogénea**: unidades rápidas/lentas, ligeras/pesadas), `phased`
 (**precedencias**: tareas bloqueadas hasta completar su requisito), `monitor`
 (**vigilancia con revisita**: el objetivo es *mantener cobertura*, no terminar) y
 `fog` (**niebla de guerra**: el coste real de cada tarea difiere ±50% del parte,
-así que planificar sobre la estimación es arriesgado — premia el margen).
+así que planificar sobre la estimación es arriesgado — premia el margen) y
+`search` (**campo a oscuras / observabilidad parcial**: las tareas son
+desconocidas hasta que un sensor las detecta, así que la flota debe *buscar*
+antes de coordinar; el cuello de botella se desplaza de la asignación al sensado).
 Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
 `optimal` (óptimo exacto por tick, baseline).
 

@@ -37,6 +37,7 @@ class EventType(StrEnum):
     STEP = "sim.step"
     # tasks
     TASK_CREATED = "task.created"
+    TASK_DETECTED = "task.detected"
     TASK_ASSIGNED = "task.assigned"
     TASK_REASSIGNED = "task.reassigned"
     TASK_PROGRESS = "task.progress"

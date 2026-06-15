@@ -129,6 +129,8 @@ _SCENARIO_DIFF = {
                "servirlo cada ~40 pasos. El objetivo es *mantener cobertura*, no terminar.",
     "fog": "**Niebla de guerra**: el coste real de cada tarea no es el del parte "
            "(±50%). Planificar 'sobre seguro' falla; premia el margen.",
+    "search": "**Campo a oscuras**: no sabes dónde están las tareas hasta que un "
+              "agente las detecta. Hay que *buscar* antes de coordinar.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -202,6 +204,15 @@ _SCENARIO_DESC = {
            "comprometerse con 'salvables' que en realidad ya estaban perdidas (y "
            "abandonar otras que eran rápidas). Premia el margen y la robustez sobre la "
            "planificación confiada; en la vista multi-semilla se ve la varianza que mete.",
+    "search": "**Observabilidad parcial / campo a oscuras**: el comandante NO sabe que "
+              "una tarea existe hasta que un agente pasa a distancia de sensor (`detection"
+              "_range`). La flota ociosa debe *barrer* el área para **descubrir** trabajo "
+              "antes de poder asignarlo — un problema de explorar-vs-explotar. El cuello "
+              "de botella se desplaza de la asignación al *sensado*: hasta que una tarea "
+              "se ve, ninguna estrategia puede ir a ella, así que las estrategias sofisti"
+              "cadas convergen (descubrir domina). Hallazgo honesto: las cuatro buenas "
+              "empatan ~98%, pero la miope (greedy) sigue penalizando ~88%; y descubrir "
+              "cuesta tiempo real (el campo a oscuras tarda ~2,4× más que verlo todo).",
 }
 
 
@@ -267,6 +278,7 @@ def _frame_scatters(
             continue
         status = t["status"]
         prog = float(t.get("progress", 0.0))
+        undetected = status not in ("done", "failed") and not t.get("detected", True)
         locked = status not in ("done", "failed") and any(
             r not in done_ids for r in t.get("requires", []))
         tx_.append(t["x"]); ty_.append(t["y"])
@@ -274,6 +286,9 @@ def _frame_scatters(
             tsym.append("square"); tcol.append("#2a6b48"); topac.append(0.85)
         elif status == "failed":
             tsym.append("x-thin"); tcol.append("#e0484f"); topac.append(1.0)
+        elif undetected:
+            # unknown to the commander until a sensor finds it — a faint ghost
+            tsym.append("circle-open"); tcol.append("#454c63"); topac.append(0.3)
         elif locked:
             tsym.append("square-open"); tcol.append("#5a6072"); topac.append(0.55)
         else:
@@ -283,6 +298,7 @@ def _frame_scatters(
             topac.append(0.5 + 0.5 * prog)
         tsize.append(_PRIORITY_SIZE.get(t["priority"], 12))
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
+                    + (" · ❓ sin detectar" if undetected else "")
                     + (" · 🔒 bloqueada" if locked else "")
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
                     + (f" · mix:{'+'.join(t['required_skills'])}"
@@ -677,13 +693,24 @@ def _parse_nl(text: str) -> dict:
     d["arrivals"] = any(w in low for w in
                         ["llegan", "nuevas", "nuevos", "sobre la marcha", "dinámic",
                          "dinamic", "continu", "van surgiendo", "aparecen"])
+    d["dark"] = any(w in low for w in
+                    ["oscur", "a ciegas", "sin saber d", "no sé dónde", "no se donde",
+                     "buscar", "búsqueda", "busqueda", "explorar", "exploraci",
+                     "rastrear", "barrer", "barrido", "encontrar", "localizar",
+                     "desconocid", "ocultas", "ocultos", "escondid", "sin detectar",
+                     "sensor", "detectar"])
     return d
 
 
 def _build_custom_scenario(agents: int, tasks: int, area: int, seed: int, deadlines: bool,
-                           failures: bool, shock: bool, arrivals: bool) -> Scenario:
-    max_ticks = min(2000, max(300, tasks * 10))
+                           failures: bool, shock: bool, arrivals: bool,
+                           dark: bool = False) -> Scenario:
+    # a dark field needs more time (search dominates) and disables deadlines: a
+    # task can't fairly fail a deadline while it's still undiscovered.
+    max_ticks = min(2000, max(300, tasks * (18 if dark else 10)))
     initial = max(1, tasks // 2) if arrivals else tasks
+    if dark:
+        deadlines = False
     return Scenario(
         name="custom", seed=int(seed), width=float(area), height=float(area),
         n_agents=int(agents), n_tasks=int(initial), max_ticks=max_ticks,
@@ -692,6 +719,7 @@ def _build_custom_scenario(agents: int, tasks: int, area: int, seed: int, deadli
         deadline_slack_factor=3.0 if deadlines else 0.0, deadline_slack_base=14,
         dynamic_tasks=(tasks - initial) if arrivals else 0,
         arrival_start_tick=5, arrival_end_tick=max(20, max_ticks // 3),
+        detection_range=float(area) / 8.0 if dark else 0.0,
     )
 
 
@@ -701,6 +729,7 @@ _CC_EXAMPLES = [
     ("🚒 Equipos → incidencias", "15 equipos atienden 50 incidencias tras un ataque"),
     ("🛰 ISR / reconocimiento", "12 drones cubren 40 objetivos con interferencias, urgente"),
     ("🚑 Búsqueda y rescate", "10 equipos de rescate y 40 supervivientes, contra reloj"),
+    ("🌑 Campo a oscuras", "24 drones buscan 45 objetivos desconocidos en un área grande"),
 ]
 
 
@@ -714,6 +743,7 @@ def _cc_apply(phrase: str) -> None:
     st.session_state.cc_failures = d["failures"]
     st.session_state.cc_shock = d["shock"]
     st.session_state.cc_arrivals = d["arrivals"]
+    st.session_state.cc_dark = d["dark"]
 
 
 def _cc_summary() -> str:
@@ -727,6 +757,8 @@ def _cc_summary() -> str:
         challenges.append("una onda de choque")
     if s.cc_arrivals:
         challenges.append("tareas que van llegando")
+    if s.cc_dark:
+        challenges.append("campo a oscuras (hay que buscar las tareas)")
     txt = f"**{s.cc_agents} unidades** atendiendo **{s.cc_tasks} puntos**"
     if challenges:
         txt += ", con " + ", ".join(challenges)
@@ -743,7 +775,8 @@ def _render_custom() -> None:
     )
     defaults = dict(cc_text="", cc_agents=20, cc_tasks=40, cc_area=200, cc_seed=42,
                     cc_deadlines=False, cc_failures=True, cc_shock=False,
-                    cc_arrivals=False, cc_strategy="triage", cc_replan=False)
+                    cc_arrivals=False, cc_dark=False, cc_strategy="triage",
+                    cc_replan=False)
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
@@ -776,6 +809,8 @@ def _render_custom() -> None:
     cc[0].checkbox("⚠️ Fallos / pérdidas de unidades", key="cc_failures")
     cc[1].checkbox("💥 Una onda de choque tumba a muchas de golpe", key="cc_shock")
     cc[1].checkbox("📥 Llegan tareas nuevas durante la misión", key="cc_arrivals")
+    cc[0].checkbox("🌑 Campo a oscuras (hay que buscar las tareas; sin plazos)",
+                   key="cc_dark")
     st.checkbox("🔁 Re-planificación continua (redirige unidades para rescatar tareas)",
                 key="cc_replan")
 
@@ -787,7 +822,7 @@ def _render_custom() -> None:
             st.session_state.cc_agents, st.session_state.cc_tasks, st.session_state.cc_area,
             st.session_state.cc_seed, st.session_state.cc_deadlines,
             st.session_state.cc_failures, st.session_state.cc_shock,
-            st.session_state.cc_arrivals)
+            st.session_state.cc_arrivals, st.session_state.cc_dark)
         st.session_state["rec"] = run_scenario(sc, st.session_state.cc_strategy,
                                                replan=st.session_state.cc_replan)
         st.session_state["scenario"] = sc
@@ -931,7 +966,9 @@ comandante digital reasigna la flota en tiempo real para salvar la misión.
   cae, **desaparece** del mapa.
 - **Tareas** = cuadrados, tamaño según prioridad: 🟧 ámbar pendiente · ▫️
   atenuado hecha · ✖️ roja **fallada** (no llegó a tiempo). 🔷 rombo cian = base
-  de recarga.
+  de recarga. En el escenario *campo a oscuras* (`search`), ⭕ círculo gris tenue
+  = tarea **sin detectar** (el comandante aún no sabe que existe; aparece al
+  pasar un sensor cerca).
 - **Líneas azules tenues** = las asignaciones del comandante (qué agente va a qué
   tarea). Míralas **reorganizarse** tras la onda de choque.
 
@@ -991,6 +1028,12 @@ def _narrative(rec: RunRecording, scenario: Scenario) -> tuple[str, str]:
     if final_tasks > init_tasks:
         p.append(f"Sobre la marcha llegaron **{final_tasks - init_tasks} tareas nuevas** "
                  f"(el entorno cambia), hasta **{final_tasks}** en total.")
+    if scenario.detection_range > 0:
+        det = [e["tick"] for e in rec.events if e["type"] == "task.detected"]
+        if det:
+            p.append(f"El campo empezó **a oscuras**: la flota tuvo que *buscar* y fue "
+                     f"**descubriendo {len(det)} tareas** con sus sensores (la última "
+                     f"hacia el tick **{max(det)}**) antes de poder asignarlas.")
     if scenario.shock_tick is not None and (k := _shock_kills(rec, scenario.shock_tick)) > 0:
         p.append(f"En el **tick {scenario.shock_tick}** una **onda de choque** destruyó "
                  f"**{k} agentes** de golpe.")

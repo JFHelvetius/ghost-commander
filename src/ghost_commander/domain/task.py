@@ -69,6 +69,12 @@ class Task:
     # interval. The objective becomes maintaining coverage, not finishing.
     revisit_every: int | None = None
     last_service_tick: int | None = None
+    # partial observability: a task the commander does not yet know exists. While
+    # False it is not assignable (no strategy can route to an unknown task) and
+    # cannot expire (you can't miss a deadline you never saw). An agent that comes
+    # within sensor range flips it to True. Default True = full observability, so
+    # scenarios without detection behave exactly as before.
+    detected: bool = True
     # bookkeeping
     remaining: float = field(default=0.0)
     created_tick: int = 0
@@ -133,6 +139,7 @@ class Task:
             "required_agents": self.required_agents,
             "requires": list(self.requires),
             "revisit_every": self.revisit_every,
+            "detected": self.detected,
         }
 
 
