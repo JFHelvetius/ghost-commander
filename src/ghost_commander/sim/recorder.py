@@ -9,6 +9,7 @@ re-running the same scenario+seed+strategy reproduces them byte-for-byte
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -27,6 +28,10 @@ class RunRecording:
     scenario_name: str
     strategy: str
     seed: int
+    replan: bool = False
+    # full scenario parameters, so the run can be re-created and verified by a
+    # third party from the saved file alone (not just the preset name).
+    scenario_params: dict[str, Any] = field(default_factory=dict)
     # Each frame is a plain dict {"tick", "world", "metrics"} so it serializes,
     # replays and indexes the same way everywhere (dashboard, tests, JSON).
     frames: list[dict[str, Any]] = field(default_factory=list)
@@ -57,6 +62,8 @@ class RunRecording:
             "scenario_name": self.scenario_name,
             "strategy": self.strategy,
             "seed": self.seed,
+            "replan": self.replan,
+            "scenario_params": self.scenario_params,
             "digest": self.digest(),
             "frames": self.frames,
             "events": self.events,
@@ -68,8 +75,13 @@ class RunRecording:
             json.dump(self.to_dict(), fh)
 
     @classmethod
-    def from_scenario(cls, scenario: Scenario, strategy: str) -> RunRecording:
-        return cls(scenario_name=scenario.name, strategy=strategy, seed=scenario.seed)
+    def from_scenario(
+        cls, scenario: Scenario, strategy: str, replan: bool = False
+    ) -> RunRecording:
+        return cls(
+            scenario_name=scenario.name, strategy=strategy, seed=scenario.seed,
+            replan=replan, scenario_params=dataclasses.asdict(scenario),
+        )
 
 
 __all__ = ["RunRecording"]

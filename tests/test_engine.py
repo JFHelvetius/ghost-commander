@@ -400,3 +400,25 @@ def test_sweep_rejects_unknown_param() -> None:
 
     with pytest.raises(ValueError):
         sweep(PRESETS["rush"], "nonsense", [1, 2])
+
+
+def test_saved_run_verifies_and_tamper_is_detected(tmp_path) -> None:  # noqa: ANN001
+    import json
+
+    from ghost_commander.sim import verify_run
+
+    # a custom (non-preset) scenario, saved and re-verified from the file alone
+    sc = Scenario(seed=9, n_agents=30, n_tasks=25, shock_tick=8,
+                  deadline_slack_factor=3.0, deadline_slack_base=12)
+    path = tmp_path / "run.json"
+    run_scenario(sc, "triage").save(str(path))
+
+    ok, saved, got = verify_run(str(path))
+    assert ok and saved == got
+
+    # tamper with the recorded digest -> verification must fail
+    d = json.loads(path.read_text())
+    d["digest"] = "deadbeefdeadbeef"
+    path.write_text(json.dumps(d))
+    ok2, _, _ = verify_run(str(path))
+    assert not ok2

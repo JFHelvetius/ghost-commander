@@ -23,6 +23,7 @@ from .sim import (
     compare_strategies,
     run_scenario,
     sweep,
+    verify_run,
 )
 
 
@@ -122,6 +123,16 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_verify(args: argparse.Namespace) -> int:
+    ok, saved, got = verify_run(args.file)
+    print(f"file   : {args.file}")
+    print(f"saved  : {saved}")
+    print(f"re-run : {got}")
+    print("RESULT : OK - reproducible (digests match)" if ok
+          else "RESULT : MISMATCH - the run did not reproduce")
+    return 0 if ok else 1
+
+
 def _cmd_presets(_: argparse.Namespace) -> int:
     print("presets:")
     for name, sc in PRESETS.items():
@@ -167,6 +178,10 @@ def build_parser() -> argparse.ArgumentParser:
     swp.add_argument("--seeds", type=int, default=1,
                      help="average each point over N seeds")
     swp.set_defaults(func=_cmd_sweep)
+
+    vfy = sub.add_parser("verify", help="re-run a saved recording and check its digest")
+    vfy.add_argument("file", help="path to a recording JSON (from `run --save`)")
+    vfy.set_defaults(func=_cmd_verify)
 
     pre = sub.add_parser("presets", help="list presets and strategies")
     pre.set_defaults(func=_cmd_presets)

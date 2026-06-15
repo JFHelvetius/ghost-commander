@@ -9,6 +9,7 @@ is the algorithm, nothing else.
 from __future__ import annotations
 
 import dataclasses
+import json
 import statistics
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,10 +17,10 @@ from typing import TYPE_CHECKING
 from ghost_commander.coordination import STRATEGIES
 
 from .engine import run_scenario
+from .scenario import Scenario
 
 if TYPE_CHECKING:
     from .recorder import RunRecording
-    from .scenario import Scenario
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,26 @@ def sweep(
     return out
 
 
+def verify_run(path: str) -> tuple[bool, str, str]:
+    """Re-run a saved recording from scratch and check its determinism digest.
+
+    A saved run carries the full scenario, so a third party can re-create and
+    re-execute it from the file alone and confirm the result is reproducible
+    byte-for-byte. Returns ``(matches, saved_digest, recomputed_digest)``.
+    """
+    with open(path, encoding="utf-8") as fh:
+        d = json.load(fh)
+    params = d.get("scenario_params")
+    if not params:
+        raise ValueError("recording has no scenario_params (saved by an older version)")
+    scenario = Scenario(**{
+        k: tuple(v) if isinstance(v, list) else v for k, v in params.items()
+    })
+    rec = run_scenario(scenario, d["strategy"], replan=d.get("replan", False))
+    saved = str(d.get("digest", ""))
+    return rec.digest() == saved, saved, rec.digest()
+
+
 __all__ = [
     "SWEEP_PARAMS",
     "RobustResult",
@@ -178,4 +199,5 @@ __all__ = [
     "compare_robust",
     "compare_strategies",
     "sweep",
+    "verify_run",
 ]

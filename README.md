@@ -101,6 +101,7 @@ Requiere Python ≥ 3.11. El núcleo solo depende de `numpy`; el dashboard añad
 ghost-commander presets                              # escenarios y estrategias
 ghost-commander run --strategy global --seed 7       # una misión
 ghost-commander run --preset swarm --save run.json   # 200 agentes, guarda replay
+ghost-commander verify run.json                      # re-ejecuta y comprueba el digest
 ghost-commander compare --preset scarce              # ranking de estrategias
 ghost-commander compare --preset rush --seeds 12     # robustez: media ± desv + win-rate
 ```
@@ -342,12 +343,25 @@ src/ghost_commander/
    siguiente tick (el "reorganizarse solo" que se ve en pantalla).
 6. **Registra** métricas y un frame para el replay.
 
-### Determinismo y replay
+### Determinismo y reproducibilidad verificable
 
 Mismo escenario + misma seed + misma estrategia ⇒ **misión idéntica, bit a
 bit** (verificado por `RunRecording.digest()`). Por eso la barra de replay del
 dashboard es exacta y la comparación de estrategias es justa: lo único que
 cambia es el algoritmo.
+
+Un run guardado lleva **el escenario completo**, así que un tercero lo
+**re-ejecuta y comprueba** desde el fichero solo:
+
+```bash
+ghost-commander run --preset specialist --save run.json
+ghost-commander verify run.json
+#   RESULT : OK - reproducible (digests match)
+```
+
+`verify` reconstruye el escenario, vuelve a simular y compara el digest; si el
+registro fue alterado, falla. La reproducibilidad no es una promesa: es
+ejecutable.
 
 ---
 

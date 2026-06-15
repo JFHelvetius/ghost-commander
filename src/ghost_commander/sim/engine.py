@@ -88,7 +88,7 @@ class Simulation:
         self.failures = FailureModel(scenario, self.root)
 
         self._record = record
-        self.recording = RunRecording.from_scenario(scenario, self.strategy.name)
+        self.recording = RunRecording.from_scenario(scenario, self.strategy.name, replan)
         if record:
             self.bus.subscribe_all(self.recording.add_event)
 

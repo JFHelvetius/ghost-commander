@@ -7,6 +7,7 @@ from .comparison import (
     compare_robust,
     compare_strategies,
     sweep,
+    verify_run,
 )
 from .engine import Simulation, run_scenario
 from .failures import FailureModel, FailureOutcome
@@ -30,4 +31,5 @@ __all__ = [
     "compute_metrics",
     "run_scenario",
     "sweep",
+    "verify_run",
 ]
