@@ -43,6 +43,10 @@ class Task:
     y: float
     priority: TaskPriority = TaskPriority.NORMAL
     workload: float = 10.0
+    # the commander's *estimate* of the workload at planning time (what
+    # deadline-aware reasoning uses). None = perfect information (estimate ==
+    # true workload). Under uncertainty the true ``workload`` differs from this.
+    estimated_workload: float | None = None
     required_agents: int = 1
     status: TaskStatus = TaskStatus.PENDING
     assigned: set[int] = field(default_factory=set)

@@ -107,6 +107,13 @@ class Scenario:
     # objective is maintaining *coverage*, not finishing.
     revisit_every: int = 0
 
+    # workload uncertainty / fog of war (opt-in): the commander plans on a
+    # workload *estimate*, but the true workload is drawn within +/-this fraction
+    # of it (so a task can prove costlier or cheaper than briefed). Deadlines are
+    # set from the estimate, so triage can misjudge what is still savable.
+    # 0 = perfect information (no extra RNG draw -> existing digests unchanged).
+    workload_uncertainty: float = 0.0
+
     labels: dict[str, str] = field(default_factory=dict)
 
     def build_world(self, root: RandomSource) -> World:
@@ -173,8 +180,16 @@ class Scenario:
         x = rng.uniform(0, self.width)
         y = rng.uniform(0, self.height)
         priority = self._draw_priority(rng)
-        workload = rng.uniform(self.task_min_workload, self.task_max_workload)
-        offset = self._deadline_offset(workload)
+        estimate = rng.uniform(self.task_min_workload, self.task_max_workload)
+        # true workload may differ from the estimate (fog of war); the commander
+        # plans on the estimate and on the estimate-based deadline.
+        if self.workload_uncertainty > 0:
+            true_workload = max(0.5, estimate * rng.uniform(
+                1.0 - self.workload_uncertainty, 1.0 + self.workload_uncertainty))
+            workload, estimated_workload = true_workload, estimate
+        else:
+            workload, estimated_workload = estimate, None
+        offset = self._deadline_offset(estimate)
         required_skill = self._draw_task_skill(rng)
         required_agents = self._draw_team_size(rng)
         required_skills = self._draw_mixed_skills(rng)
@@ -187,6 +202,7 @@ class Scenario:
             y=y,
             priority=priority,
             workload=workload,
+            estimated_workload=estimated_workload,
             required_agents=required_agents,
             created_tick=created_tick,
             deadline_tick=None if offset is None else created_tick + offset,
@@ -559,6 +575,26 @@ PRESETS: dict[str, Scenario] = {
         random_failure_rate=0.002,
         shock_tick=None,
         revisit_every=40,
+    ),
+    # Fog of war: every task is briefed with a workload *estimate*, but the true
+    # cost is drawn within +/-50% of it — some tasks prove far heavier than they
+    # looked. Deadlines are set from the estimate, so a commander that triages on
+    # the brief alone can commit to "savable" tasks that turn out to be lost
+    # causes (and abandon ones that were actually quick). Rewards slack/robustness
+    # over confident planning; the multi-seed view shows the variance it injects.
+    "fog": Scenario(
+        name="fog",
+        seed=42,
+        n_agents=45,
+        n_tasks=55,
+        max_ticks=300,
+        agent_speed=2.8,
+        random_failure_rate=0.004,
+        shock_tick=22,
+        shock_failure_rate=0.30,
+        deadline_slack_factor=3.0,
+        deadline_slack_base=14,
+        workload_uncertainty=0.5,   # true workload within +/-50% of the estimate
     ),
 }
 

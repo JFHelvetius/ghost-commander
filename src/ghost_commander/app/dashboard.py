@@ -127,6 +127,8 @@ _SCENARIO_DIFF = {
               "hasta que se complete su requisito). Hay que desbloquear en el orden bueno.",
     "monitor": "**Vigilancia con revisita**: cada punto caduca y hay que volver a "
                "servirlo cada ~40 pasos. El objetivo es *mantener cobertura*, no terminar.",
+    "fog": "**Niebla de guerra**: el coste real de cada tarea no es el del parte "
+           "(±50%). Planificar 'sobre seguro' falla; premia el margen.",
 }
 
 # How each strategy decides + when it shines (for the comparison table).
@@ -193,6 +195,13 @@ _SCENARIO_DESC = {
                "cada ~40 pasos o se queda *obsoleto*. El objetivo ya no es terminar "
                "sino **mantener la cobertura** del campo en el tiempo, ciclando una "
                "flota modesta. greedy deja caducar lo lejano; la coordinación gana mucho.",
+    "fog": "**Niebla de guerra (incertidumbre de carga)**: cada tarea se planifica "
+           "sobre una *estimación* de trabajo, pero el coste real se sortea dentro de "
+           "±50% — algunas salen mucho más caras de lo que parecían. Como los plazos "
+           "se fijan sobre la estimación, un triage que confía en el parte puede "
+           "comprometerse con 'salvables' que en realidad ya estaban perdidas (y "
+           "abandonar otras que eran rápidas). Premia el margen y la robustez sobre la "
+           "planificación confiada; en la vista multi-semilla se ve la varianza que mete.",
 }
 
 

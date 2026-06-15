@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ghost_commander.coordination import STRATEGIES
-from ghost_commander.core import EventType
+from ghost_commander.core import EventType, RandomSource
 from ghost_commander.sim import PRESETS, Scenario, Simulation, run_scenario
 
 
@@ -367,6 +367,44 @@ def test_monitor_keeps_coverage_and_greedy_is_worst() -> None:
 def test_non_recurring_coverage_is_full() -> None:
     rec = run_scenario(Scenario(seed=1, n_agents=40, n_tasks=20), "global")
     assert all(s["coverage"] == 1.0 for s in rec.metrics_history)
+
+
+def test_workload_uncertainty_splits_estimate_from_truth() -> None:
+    # With uncertainty on, the true workload differs from the briefed estimate,
+    # so at least some tasks carry an estimate distinct from their real workload.
+    sc = Scenario(seed=7, n_agents=10, n_tasks=40, workload_uncertainty=0.5)
+    world = sc.build_world(RandomSource(seed=sc.seed, label="/"))
+    tasks = list(world.tasks.values())
+    assert any(t.estimated_workload is not None for t in tasks)
+    for t in tasks:
+        if t.estimated_workload is not None:
+            assert t.workload >= 0.5  # true workload is floored, never zero
+
+
+def test_no_uncertainty_means_perfect_information() -> None:
+    # Default (uncertainty 0): the estimate is never recorded — plain remaining
+    # is used for planning, exactly as before the feature existed.
+    sc = Scenario(seed=7, n_agents=10, n_tasks=40)
+    world = sc.build_world(RandomSource(seed=sc.seed, label="/"))
+    assert all(t.estimated_workload is None for t in world.tasks.values())
+
+
+def test_uncertainty_is_opt_in_and_changes_the_run() -> None:
+    # The feature is opt-in: enabling it draws an extra workload RNG per task, so
+    # the run differs from the perfect-information baseline. (When off it draws
+    # nothing extra, keeping every existing scenario's digest stable.)
+    import dataclasses
+    base = Scenario(seed=11, n_agents=40, n_tasks=30, shock_tick=20)
+    foggy = dataclasses.replace(base, workload_uncertainty=0.5)
+    assert run_scenario(base, "triage").digest() != \
+        run_scenario(foggy, "triage").digest()
+
+
+def test_fog_preset_runs_and_completes_mostly() -> None:
+    rec = run_scenario(PRESETS["fog"], "triage")
+    m = rec.final_metrics
+    assert m["tasks_total"] == PRESETS["fog"].n_tasks
+    assert 0.5 < m["mission_completion"] <= 1.0
 
 
 def test_compare_robust_distribution() -> None:

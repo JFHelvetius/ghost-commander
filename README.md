@@ -158,8 +158,10 @@ por bases), `sar` (búsqueda y rescate contra reloj con extracciones en equipo),
 **dinámicas**: lo que espera se vuelve más urgente), `taskforce` (tareas que
 exigen un **mix de especialistas** a la vez), `mixedfleet` (**flota
 heterogénea**: unidades rápidas/lentas, ligeras/pesadas), `phased`
-(**precedencias**: tareas bloqueadas hasta completar su requisito) y `monitor`
-(**vigilancia con revisita**: el objetivo es *mantener cobertura*, no terminar).
+(**precedencias**: tareas bloqueadas hasta completar su requisito), `monitor`
+(**vigilancia con revisita**: el objetivo es *mantener cobertura*, no terminar) y
+`fog` (**niebla de guerra**: el coste real de cada tarea difiere ±50% del parte,
+así que planificar sobre la estimación es arriesgado — premia el margen).
 Estrategias: `greedy`, `auction`, `global`, `triage` (deadline-aware),
 `optimal` (óptimo exacto por tick, baseline).
 

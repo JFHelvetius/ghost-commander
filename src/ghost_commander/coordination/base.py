@@ -82,7 +82,10 @@ def urgency_score(agent: Agent, task: Task, tick: int) -> float:
     if task.deadline_tick is None:
         return base
     travel = math.ceil(distance / max(agent.speed, _EPS))
-    work = math.ceil(max(task.remaining, 0.0) / max(agent.capacity, _EPS))
+    # the commander plans with its workload *estimate* when one is given (the true
+    # workload is only revealed as the task is worked); falls back to remaining.
+    plan_work = task.estimated_workload if task.estimated_workload is not None else task.remaining
+    work = math.ceil(max(plan_work, 0.0) / max(agent.capacity, _EPS))
     ttc = travel + work
     spare = (task.deadline_tick - tick) - ttc
     if spare < 0:
