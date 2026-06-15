@@ -66,7 +66,8 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         robust = compare_robust(scenario, seeds, args.strategies, replan=args.replan)
         print(f"scenario={scenario.name} robust over {args.seeds} seeds "
               f"({scenario.seed}..{scenario.seed + args.seeds - 1})  metric={metric}\n")
-        header = f"{'rank':<5}{'strategy':<10}{'mean':<8}{'std':<8}{'min':<8}{'max':<8}{'win-rate':<9}"
+        header = (f"{'rank':<5}{'strategy':<10}{'mean':<8}{'std':<8}{'min':<8}"
+                  f"{'max':<8}{'win-rate':<9}")
         print(header + "\n" + "-" * len(header))
         for i, r in enumerate(robust, start=1):
             print(f"{i:<5}{r.strategy:<10}{r.mean*100:<7.1f} {r.std*100:<7.1f} "
@@ -99,7 +100,8 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 def _cmd_presets(_: argparse.Namespace) -> int:
     print("presets:")
     for name, sc in PRESETS.items():
-        print(f"  {name:<10} agents={sc.n_agents:<4} tasks={sc.n_tasks:<4} max_ticks={sc.max_ticks}")
+        print(f"  {name:<10} agents={sc.n_agents:<4} tasks={sc.n_tasks:<4} "
+              f"max_ticks={sc.max_ticks}")
     print(f"\nstrategies: {', '.join(STRATEGIES)}")
     return 0
 

@@ -230,7 +230,9 @@ class Scenario:
         return self._weighted_choice(rng, self.agent_skills, self.task_skill_weights)
 
     @staticmethod
-    def _weighted_choice(rng: RandomSource, items: tuple[str, ...], weights: tuple[float, ...]) -> str:
+    def _weighted_choice(
+        rng: RandomSource, items: tuple[str, ...], weights: tuple[float, ...]
+    ) -> str:
         w = weights if len(weights) == len(items) else tuple(1.0 for _ in items)
         r = rng.uniform(0, sum(w))
         acc = 0.0

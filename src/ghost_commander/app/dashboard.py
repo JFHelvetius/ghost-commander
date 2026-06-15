@@ -11,6 +11,7 @@ exact and the strategy comparison is fair.
 from __future__ import annotations
 
 import dataclasses
+import math as _math
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -99,7 +100,8 @@ _SCENARIO_DIFF = {
     "swarm": "**Escala**: 200 agentes y 80 tareas a la vez.",
     "scarce": "**Recursos justos**: la flota se desgasta; hay que cuidarla.",
     "calm": "**Sin sorpresas** (ni fallos ni shock): coordinación 'en limpio', de referencia.",
-    "contested": "**Plazos**: las tareas *fallan* si no se hacen a tiempo → la misión se puede **perder**.",
+    "contested": "**Plazos**: las tareas *fallan* si no se hacen a tiempo → la misión "
+                 "se puede **perder**.",
     "rush": "**Plazos muy apretados**: solo gana quien hace *triage* (prioriza lo salvable).",
     "streaming": "**El mundo cambia**: empieza con pocas tareas y llegan más en oleadas.",
     "specialist": "**Flota mixta**: cada tarea pide un *tipo* de agente, y uno escasea.",
@@ -195,8 +197,7 @@ _SCENARIO_DESC = {
 # --------------------------------------------------------------------------- map
 # Fixed trace order so Plotly can animate frame-to-frame (trace count is constant):
 #   0 links · 1 bases · 2 tasks-open · 3 tasks-done · 4 tasks-failed · 5 halo · 6 core
-import math as _math
-
+#
 # CRITICAL for animation: every trace must keep a CONSTANT number of points,
 # matched by index, across all frames. If a trace's length changes between frames
 # Plotly re-indexes and flings points across the map during the transition (the
@@ -273,7 +274,8 @@ def _frame_scatters(
         ttxt.append(f"tarea {t['id']} · prio {t['priority']} · {int(t['progress']*100)}%"
                     + (" · 🔒 bloqueada" if locked else "")
                     + (f" · skill:{t['required_skill']}" if t.get("required_skill") else "")
-                    + (f" · mix:{'+'.join(t['required_skills'])}" if t.get("required_skills") else "")
+                    + (f" · mix:{'+'.join(t['required_skills'])}"
+                       if t.get("required_skills") else "")
                     + (f" · equipo:{t['required_agents']}"
                        if t.get("required_agents", 1) > 1 and not t.get("required_skills") else ""))
     traces.append(go.Scattergl(
@@ -734,7 +736,7 @@ def _render_custom() -> None:
     st.markdown("**1 · Empieza por un ejemplo** (un clic lo rellena), o escribe tu frase:")
     for row_start in range(0, len(_CC_EXAMPLES), 2):
         pair = _CC_EXAMPLES[row_start:row_start + 2]
-        for col, (lab, phrase) in zip(st.columns(2), pair):
+        for col, (lab, phrase) in zip(st.columns(len(pair)), pair, strict=True):
             if col.button(lab, use_container_width=True, key=f"ex_{row_start}_{lab}"):
                 st.session_state.cc_text = phrase
                 _cc_apply(phrase)

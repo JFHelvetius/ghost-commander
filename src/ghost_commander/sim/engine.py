@@ -19,7 +19,14 @@ from typing import TYPE_CHECKING
 
 from ghost_commander.coordination import CoordinationStrategy, make_strategy
 from ghost_commander.coordination.base import can_fill, urgency_score
-from ghost_commander.core import EventBus, EventLog, EventSeverity, EventType, RandomSource, SimClock
+from ghost_commander.core import (
+    EventBus,
+    EventLog,
+    EventSeverity,
+    EventType,
+    RandomSource,
+    SimClock,
+)
 from ghost_commander.domain import AgentStatus, TaskStatus
 
 from .failures import FailureModel

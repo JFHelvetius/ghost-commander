@@ -43,3 +43,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Paired list appends (`xs.append(a); ys.append(b)`) keep the map-building blocks
+# compact and readable; semicolons are intentional there.
+"src/ghost_commander/app/dashboard.py" = ["E702"]
+# Long lines in tests (assertion messages, inline data) don't hurt readability.
+"tests/**" = ["E501"]

@@ -9,7 +9,6 @@ weaponization concept is introduced as code.
 
 from __future__ import annotations
 
-import io
 import tokenize
 from pathlib import Path
 

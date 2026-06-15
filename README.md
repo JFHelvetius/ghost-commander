@@ -1,5 +1,8 @@
 # 👻 Ghost Commander
 
+[![CI](https://github.com/JFHelvetius/ghost-commander/actions/workflows/ci.yml/badge.svg)](https://github.com/JFHelvetius/ghost-commander/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 **Un sistema capaz de coordinar cientos de agentes autónomos en entornos
 cambiantes, maximizando el éxito de la misión mediante reasignación dinámica de
 recursos.**
