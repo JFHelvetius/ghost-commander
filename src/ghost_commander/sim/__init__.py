@@ -1,6 +1,13 @@
 """Simulation engine, failure model, metrics, recording and comparison."""
 
-from .comparison import RobustResult, StrategyResult, compare_robust, compare_strategies
+from .comparison import (
+    SWEEP_PARAMS,
+    RobustResult,
+    StrategyResult,
+    compare_robust,
+    compare_strategies,
+    sweep,
+)
 from .engine import Simulation, run_scenario
 from .failures import FailureModel, FailureOutcome
 from .metrics import MetricsSnapshot, compute_metrics
@@ -11,6 +18,7 @@ __all__ = [
     "PRESETS",
     "FailureModel",
     "FailureOutcome",
+    "SWEEP_PARAMS",
     "MetricsSnapshot",
     "RobustResult",
     "RunRecording",
@@ -21,4 +29,5 @@ __all__ = [
     "compare_strategies",
     "compute_metrics",
     "run_scenario",
+    "sweep",
 ]

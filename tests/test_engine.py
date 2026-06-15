@@ -379,3 +379,24 @@ def test_compare_robust_distribution() -> None:
         assert r.lo <= r.mean <= r.hi
     assert all(res[i].mean >= res[i + 1].mean for i in range(len(res) - 1))  # sorted
     assert sum(r.wins for r in res) >= 3  # at least one winner per seed
+
+
+def test_sweep_scales_with_fleet_size() -> None:
+    from ghost_commander.sim import sweep
+
+    data = sweep(PRESETS["rush"], "agents", [30, 60, 90], strategies=["greedy", "triage"])
+    assert set(data) == {"greedy", "triage"}
+    for name in data:
+        xs = [v for v, _ in data[name]]
+        assert xs == [30.0, 60.0, 90.0]
+        assert all(0.0 <= m <= 1.0001 for _, m in data[name])
+    # more fleet -> generally more mission for triage (monotone-ish at these points)
+    ys = [m for _, m in data["triage"]]
+    assert ys[-1] >= ys[0]
+
+
+def test_sweep_rejects_unknown_param() -> None:
+    from ghost_commander.sim import sweep
+
+    with pytest.raises(ValueError):
+        sweep(PRESETS["rush"], "nonsense", [1, 2])

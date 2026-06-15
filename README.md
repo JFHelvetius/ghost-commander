@@ -125,6 +125,26 @@ rank strategy  mean    std    min    max    win-rate
 nunca gana. Que ningún campeón llegue al 100% de victorias es el hallazgo: la mejor
 coordinación depende de la partida.
 
+### Escalado: ¿cuánta flota necesito?
+
+`sweep` (y la pestaña **📈 Escalado**) varían un parámetro —flota, tareas,
+velocidad, holgura de plazo— con todo lo demás fijo, y trazan la curva de cada
+estrategia:
+
+```
+ghost-commander sweep --preset rush --param agents --values 30 45 60 75 90
+nº de unidades  greedy   auction  global   triage   optimal
+30              52.2     56.5     52.2     53.6     54.3
+45              64.4     75.3     78.8     82.2     76.0
+60              74.8     86.4     91.2     93.9     88.4
+75              84.1     95.7     95.7     97.8     91.3
+90              72.8     98.6     98.6     96.6     98.6
+```
+
+`triage` llega al ~94% con **60 unidades**; `greedy` **ni con 90** (y empeora,
+por thrashing). La distancia horizontal entre curvas = cuánto **más** recurso
+necesita una estrategia para igualar a otra.
+
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede
 *perder*), `rush` (plazos muy ajustados, escaparate del triage), `streaming`

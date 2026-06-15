@@ -20,10 +20,12 @@ import streamlit as st
 from ghost_commander.coordination import STRATEGIES
 from ghost_commander.sim import (
     PRESETS,
+    SWEEP_PARAMS,
     Scenario,
     StrategyResult,
     compare_robust,
     run_scenario,
+    sweep,
 )
 from ghost_commander.sim.recorder import RunRecording
 
@@ -612,13 +614,16 @@ def main() -> None:
     )
     _intro()
 
-    tab_mission, tab_compare, tab_custom, tab_guide = st.tabs(
-        ["🛰  Misión", "📊  Comparar estrategias", "✏️  Tu caso", "📖  Guía"])
+    tab_mission, tab_compare, tab_sweep, tab_custom, tab_guide = st.tabs(
+        ["🛰  Misión", "📊  Comparar", "📈  Escalado", "✏️  Tu caso", "📖  Guía"])
     with tab_mission:
         _render_mission(st.session_state["rec"], st.session_state.get("scenario", scenario))
     with tab_compare:
         _render_compare(st.session_state.get("scenario", scenario),
                         st.session_state.get("replan", replan))
+    with tab_sweep:
+        _render_sweep(st.session_state.get("scenario", scenario),
+                      st.session_state.get("replan", replan))
     with tab_custom:
         _render_custom()
     with tab_guide:
@@ -800,6 +805,64 @@ def _render_custom() -> None:
         else:
             st.caption("💡 Prueba a cambiar la **estrategia** o a comparar las 5 en la "
                        "pestaña 📊 con este mismo caso.")
+
+
+_SWEEP_RANGE = {  # param -> (min, max, is_float)
+    "agents": (20, 120, False),
+    "tasks": (20, 100, False),
+    "speed": (1.5, 5.0, True),
+    "deadline": (6, 28, False),
+}
+
+
+def _render_sweep(scenario: Scenario, replan: bool) -> None:
+    st.markdown("### ¿Cómo escala? — barrido de un parámetro")
+    st.markdown(
+        "Pregunta de planificación que la comparación no responde: *¿cuánto cambia el "
+        "resultado si vario una cosa?* — p. ej. **cuánta flota necesito**. Variamos un "
+        f"parámetro (escenario **{scenario.name}**, todo lo demás fijo) y vemos la "
+        "curva de cada estrategia.")
+    labels = {k: SWEEP_PARAMS[k][1] for k in SWEEP_PARAMS}
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    param = c1.selectbox("Parámetro a variar", list(SWEEP_PARAMS),
+                         format_func=lambda k: labels[k])
+    lo_d, hi_d, is_float = _SWEEP_RANGE[param]
+    lo = c2.number_input("desde", value=float(lo_d) if is_float else lo_d)
+    hi = c3.number_input("hasta", value=float(hi_d) if is_float else hi_d)
+    n_pts = c4.slider("puntos", 3, 8, 5)
+    seeds = st.slider("Promediar cada punto sobre N seeds (robustez)", 1, 10, 1)
+
+    if not st.button("▶ Barrer", type="primary", use_container_width=True):
+        return
+    if hi <= lo:
+        st.warning("«hasta» debe ser mayor que «desde».")
+        return
+    step = (hi - lo) / (n_pts - 1)
+    values = [lo + step * i for i in range(n_pts)]
+    if not is_float:
+        values = sorted({int(round(v)) for v in values})
+
+    recurring = scenario.revisit_every > 0
+    metric = "cobertura" if recurring else "misión"
+    with st.spinner(f"Barriendo {len(values)} valores × {len(STRATEGIES)} estrategias…"):
+        data = sweep(scenario, param, values, seeds=seeds, replan=replan)
+
+    fig = go.Figure()
+    for name in STRATEGIES:
+        xs = [v for v, _ in data[name]]
+        ys = [m * 100 for _, m in data[name]]
+        fig.add_trace(go.Scatter(x=xs, y=ys, name=name, mode="lines+markers",
+                                 line=dict(color=_STRAT_COLOR.get(name, "#ccc"), width=2)))
+    fig.update_layout(
+        title=f"{metric.capitalize()} vs {labels[param]}", height=420,
+        plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
+        legend=dict(orientation="h", y=1.1, font=dict(size=10)),
+        xaxis=dict(title=labels[param], gridcolor="#1c2230"),
+        yaxis=dict(title=f"{metric} %", range=[0, 105], gridcolor="#1c2230"))
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Cada línea es una estrategia. La **distancia horizontal** entre curvas "
+               "te dice cuánto *más* de ese recurso necesita una estrategia para igualar "
+               "a otra (p. ej. cuánta más flota necesita greedy para llegar a lo de triage).")
 
 
 def _render_guide() -> None:

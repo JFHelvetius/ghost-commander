@@ -132,4 +132,50 @@ def compare_robust(
     return out
 
 
-__all__ = ["RobustResult", "StrategyResult", "compare_robust", "compare_strategies"]
+# Parameters a sensitivity sweep can vary: name -> (Scenario field, label).
+SWEEP_PARAMS: dict[str, tuple[str, str]] = {
+    "agents": ("n_agents", "nº de unidades"),
+    "tasks": ("n_tasks", "nº de tareas"),
+    "speed": ("agent_speed", "velocidad de las unidades"),
+    "deadline": ("deadline_slack_base", "holgura de plazo"),
+}
+
+
+def sweep(
+    scenario: Scenario, param: str, values: list[float],
+    strategies: list[str] | None = None, seeds: int = 1, replan: bool = False,
+) -> dict[str, list[tuple[float, float]]]:
+    """Vary one scenario parameter and report the headline metric per strategy.
+
+    Answers the planning question the comparison can't: *how does the outcome
+    scale?* — e.g. how much fleet each strategy needs to hit a target. Returns
+    ``{strategy: [(value, mean_metric), ...]}``; averaged over ``seeds``.
+    """
+    if param not in SWEEP_PARAMS:
+        raise ValueError(f"unknown sweep param {param!r}; choices: {', '.join(SWEEP_PARAMS)}")
+    field = SWEEP_PARAMS[param][0]
+    names = strategies or list(STRATEGIES)
+    recurring = scenario.revisit_every > 0
+    out: dict[str, list[tuple[float, float]]] = {n: [] for n in names}
+    for v in values:
+        cast = type(getattr(scenario, field))
+        base = dataclasses.replace(scenario, **{field: cast(v)})
+        for n in names:
+            vals = [
+                _headline(run_scenario(
+                    dataclasses.replace(base, seed=scenario.seed + s), n, replan=replan),
+                    recurring)
+                for s in range(seeds)
+            ]
+            out[n].append((float(v), statistics.mean(vals)))
+    return out
+
+
+__all__ = [
+    "SWEEP_PARAMS",
+    "RobustResult",
+    "StrategyResult",
+    "compare_robust",
+    "compare_strategies",
+    "sweep",
+]

@@ -15,7 +15,15 @@ import dataclasses
 import sys
 
 from .coordination import STRATEGIES
-from .sim import PRESETS, Scenario, compare_robust, compare_strategies, run_scenario
+from .sim import (
+    PRESETS,
+    SWEEP_PARAMS,
+    Scenario,
+    compare_robust,
+    compare_strategies,
+    run_scenario,
+    sweep,
+)
 
 
 def _scenario_from_args(args: argparse.Namespace) -> Scenario:
@@ -97,6 +105,23 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    scenario = _scenario_from_args(args)
+    names = args.strategies or list(STRATEGIES)
+    data = sweep(scenario, args.param, args.values, names, seeds=args.seeds,
+                 replan=args.replan)
+    metric = "coverage" if scenario.revisit_every > 0 else "mission"
+    label = SWEEP_PARAMS[args.param][1]
+    print(f"scenario={scenario.name} sweep {args.param} ({label})  metric={metric}"
+          f"  seeds={args.seeds}\n")
+    header = f"{label:<16}" + "".join(f"{n:<10}" for n in names)
+    print(header + "\n" + "-" * len(header))
+    for i, v in enumerate(args.values):
+        row = f"{v:<16}" + "".join(f"{data[n][i][1] * 100:<10.1f}" for n in names)
+        print(row)
+    return 0
+
+
 def _cmd_presets(_: argparse.Namespace) -> int:
     print("presets:")
     for name, sc in PRESETS.items():
@@ -132,6 +157,16 @@ def build_parser() -> argparse.ArgumentParser:
     cmp.add_argument("--seeds", type=int, default=1,
                      help="run over N seeds and report mean/std/win-rate (robustness)")
     cmp.set_defaults(func=_cmd_compare)
+
+    swp = sub.add_parser("sweep", help="vary a parameter and see how strategies scale")
+    add_common(swp)
+    swp.add_argument("--param", default="agents", choices=list(SWEEP_PARAMS))
+    swp.add_argument("--values", type=float, nargs="+", required=True,
+                     help="values to sweep, e.g. --values 20 40 60 80 100")
+    swp.add_argument("--strategies", nargs="+", default=None, choices=list(STRATEGIES))
+    swp.add_argument("--seeds", type=int, default=1,
+                     help="average each point over N seeds")
+    swp.set_defaults(func=_cmd_sweep)
 
     pre = sub.add_parser("presets", help="list presets and strategies")
     pre.set_defaults(func=_cmd_presets)
