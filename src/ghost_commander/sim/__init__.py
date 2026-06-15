@@ -1,6 +1,6 @@
 """Simulation engine, failure model, metrics, recording and comparison."""
 
-from .comparison import StrategyResult, compare_strategies
+from .comparison import RobustResult, StrategyResult, compare_robust, compare_strategies
 from .engine import Simulation, run_scenario
 from .failures import FailureModel, FailureOutcome
 from .metrics import MetricsSnapshot, compute_metrics
@@ -12,10 +12,12 @@ __all__ = [
     "FailureModel",
     "FailureOutcome",
     "MetricsSnapshot",
+    "RobustResult",
     "RunRecording",
     "Scenario",
     "Simulation",
     "StrategyResult",
+    "compare_robust",
     "compare_strategies",
     "compute_metrics",
     "run_scenario",

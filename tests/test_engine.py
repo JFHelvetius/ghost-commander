@@ -367,3 +367,15 @@ def test_monitor_keeps_coverage_and_greedy_is_worst() -> None:
 def test_non_recurring_coverage_is_full() -> None:
     rec = run_scenario(Scenario(seed=1, n_agents=40, n_tasks=20), "global")
     assert all(s["coverage"] == 1.0 for s in rec.metrics_history)
+
+
+def test_compare_robust_distribution() -> None:
+    from ghost_commander.sim import compare_robust
+
+    res = compare_robust(PRESETS["rush"], seeds=[42, 11, 7])
+    assert len(res) == len(STRATEGIES)
+    for r in res:
+        assert r.n == 3 and 0 <= r.wins <= 3 and 0.0 <= r.mean <= 1.0001
+        assert r.lo <= r.mean <= r.hi
+    assert all(res[i].mean >= res[i + 1].mean for i in range(len(res) - 1))  # sorted
+    assert sum(r.wins for r in res) >= 3  # at least one winner per seed

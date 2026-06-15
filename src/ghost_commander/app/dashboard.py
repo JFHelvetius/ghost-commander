@@ -17,7 +17,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ghost_commander.coordination import STRATEGIES
-from ghost_commander.sim import PRESETS, Scenario, StrategyResult, run_scenario
+from ghost_commander.sim import (
+    PRESETS,
+    Scenario,
+    StrategyResult,
+    compare_robust,
+    run_scenario,
+)
 from ghost_commander.sim.recorder import RunRecording
 
 _BG = "#0e1117"
@@ -1087,8 +1093,15 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
             "de referencia para ese objetivo."
         )
 
+    n_seeds = st.slider(
+        "🎲 Robustez — nº de seeds", 1, 25, 1,
+        help="Corre la comparación sobre varias partidas (seeds) y muestra media ± "
+             "desviación y la tasa de victorias. Una sola seed puede engañar.")
     if not st.button(f"▶ Comparar las {len(STRATEGIES)} estrategias en este escenario",
                      type="primary", use_container_width=True):
+        return
+    if n_seeds > 1:
+        _render_robust(scenario, replan, n_seeds, recurring)
         return
     with st.spinner("Corriendo " + " / ".join(STRATEGIES) + "…"):
         recs = {name: run_scenario(scenario, name, replan=replan) for name in STRATEGIES}
@@ -1173,6 +1186,45 @@ def _render_compare(scenario: Scenario, replan: bool = False) -> None:
         "pero es miope. Cambia de **escenario** en la barra lateral y vuelve a comparar: "
         "ese es justo el problema que resuelve un comandante de verdad."
     )
+
+
+def _render_robust(scenario: Scenario, replan: bool, n_seeds: int, recurring: bool) -> None:
+    seeds = [scenario.seed + i for i in range(n_seeds)]
+    metric = "cobertura" if recurring else "misión"
+    with st.spinner(f"Corriendo {len(STRATEGIES)} estrategias × {n_seeds} seeds…"):
+        robust = compare_robust(scenario, seeds, replan=replan)
+
+    win = robust[0]
+    st.success(
+        f"🏆 En media sobre **{n_seeds} seeds**, gana **{win.strategy}** "
+        f"({metric} {win.mean*100:.0f}% ± {win.std*100:.0f}), con una **tasa de "
+        f"victorias del {win.win_rate*100:.0f}%**. La mejor estrategia **depende de la "
+        f"partida** — por eso miramos la distribución, no una sola tirada.")
+
+    bar = go.Figure(go.Bar(
+        x=[r.strategy for r in robust], y=[r.mean * 100 for r in robust],
+        error_y=dict(type="data", array=[r.std * 100 for r in robust], visible=True,
+                     color="rgba(255,255,255,0.5)"),
+        marker_color=_RANK_COLORS[: len(robust)],
+        text=[f"{r.mean*100:.0f}%" for r in robust], textposition="outside",
+    ))
+    bar.update_layout(
+        title=f"{metric.capitalize()} media ± desviación sobre {n_seeds} seeds", height=360,
+        plot_bgcolor=_BG, paper_bgcolor=_BG, font=dict(color=_FG),
+        yaxis=dict(range=[0, 112], title=f"{metric} %", gridcolor="#1c2230"))
+    st.plotly_chart(bar, use_container_width=True)
+    st.caption("Las barras de error son la desviación entre seeds: cuanto más cortas, "
+               "más **consistente** es la estrategia, no solo más alta de media.")
+
+    df = pd.DataFrame([
+        {"estrategia": r.strategy, f"{metric} media %": round(r.mean * 100, 1),
+         "± desv.": round(r.std * 100, 1), "min": round(r.lo * 100, 1),
+         "max": round(r.hi * 100, 1), "tasa victorias": f"{r.win_rate*100:.0f}%"}
+        for r in robust])
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.caption("**tasa de victorias** = en cuántas de las seeds esa estrategia fue la "
+               "mejor (empates incluidos). Que nadie gane el 100% es el hallazgo honesto: "
+               "no hay un campeón universal.")
 
 
 def _interpret_compare(results: list, opt: float, recurring: bool = False) -> str:

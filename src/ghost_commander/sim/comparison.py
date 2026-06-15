@@ -8,6 +8,8 @@ is the algorithm, nothing else.
 
 from __future__ import annotations
 
+import dataclasses
+import statistics
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -74,4 +76,60 @@ def compare_strategies(
     return results
 
 
-__all__ = ["StrategyResult", "compare_strategies"]
+@dataclass(frozen=True)
+class RobustResult:
+    """A strategy's headline metric distribution across many seeds."""
+
+    strategy: str
+    mean: float
+    std: float
+    lo: float
+    hi: float
+    wins: int   # seeds where this strategy was (tied) best
+    n: int      # number of seeds
+
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.n if self.n else 0.0
+
+
+def _headline(rec: RunRecording, recurring: bool) -> float:
+    if recurring:
+        h = rec.metrics_history
+        return sum(s.get("coverage", 1.0) for s in h) / len(h) if h else 1.0
+    return float(rec.final_metrics.get("mission_completion", 0.0))
+
+
+def compare_robust(
+    scenario: Scenario, seeds: list[int], strategies: list[str] | None = None,
+    replan: bool = False,
+) -> list[RobustResult]:
+    """Run every strategy over many seeds and report the distribution of the
+    headline metric (mission % or, for recurring scenarios, mean coverage). This
+    is the honest way to read the comparison: a single seed can mislead.
+    """
+    names = strategies or list(STRATEGIES)
+    recurring = scenario.revisit_every > 0
+    per: dict[str, list[float]] = {n: [] for n in names}
+    wins: dict[str, int] = {n: 0 for n in names}
+    for s in seeds:
+        sc = dataclasses.replace(scenario, seed=s)
+        vals = {n: _headline(run_scenario(sc, n, replan=replan), recurring) for n in names}
+        best = max(vals.values())
+        for n, v in vals.items():
+            per[n].append(v)
+            if v >= best - 1e-9:
+                wins[n] += 1
+    out = [
+        RobustResult(
+            strategy=n, mean=statistics.mean(per[n]),
+            std=statistics.pstdev(per[n]) if len(per[n]) > 1 else 0.0,
+            lo=min(per[n]), hi=max(per[n]), wins=wins[n], n=len(seeds),
+        )
+        for n in names
+    ]
+    out.sort(key=lambda r: -r.mean)
+    return out
+
+
+__all__ = ["RobustResult", "StrategyResult", "compare_robust", "compare_strategies"]

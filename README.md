@@ -99,7 +99,28 @@ ghost-commander presets                              # escenarios y estrategias
 ghost-commander run --strategy global --seed 7       # una misión
 ghost-commander run --preset swarm --save run.json   # 200 agentes, guarda replay
 ghost-commander compare --preset scarce              # ranking de estrategias
+ghost-commander compare --preset rush --seeds 12     # robustez: media ± desv + win-rate
 ```
+
+### Robustez: una seed puede engañar
+
+`compare --seeds N` (y el control **Robustez** del dashboard) corren cada estrategia
+sobre N partidas y reportan **media ± desviación** y **tasa de victorias**. Es la
+forma honesta de leer la comparación:
+
+```
+ghost-commander compare --preset rush --seeds 8
+rank strategy  mean    std    min    max    win-rate
+----------------------------------------------------
+1    triage    83.5    5.0    75.8   93.2   62%
+2    global    79.8    6.9    62.5   84.5   12%
+3    optimal   79.7    5.3    68.8   85.6   25%
+4    greedy    73.7    4.6    68.1   81.8    0%
+```
+
+`triage` gana **de media** y en el 62% de las seeds — pero **no siempre**; greedy
+nunca gana. Que ningún campeón llegue al 100% de victorias es el hallazgo: la mejor
+coordinación depende de la partida.
 
 Escenarios incluidos: `default`, `swarm` (200 agentes), `scarce` (recursos
 escasos), `calm` (sin fallos), `contested` (con deadlines, la misión se puede

@@ -15,7 +15,7 @@ import dataclasses
 import sys
 
 from .coordination import STRATEGIES
-from .sim import PRESETS, Scenario, compare_strategies, run_scenario
+from .sim import PRESETS, Scenario, compare_robust, compare_strategies, run_scenario
 
 
 def _scenario_from_args(args: argparse.Namespace) -> Scenario:
@@ -60,6 +60,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_compare(args: argparse.Namespace) -> int:
     scenario = _scenario_from_args(args)
+    metric = "coverage" if scenario.revisit_every > 0 else "mission"
+    if args.seeds and args.seeds > 1:
+        seeds = [scenario.seed + i for i in range(args.seeds)]
+        robust = compare_robust(scenario, seeds, args.strategies, replan=args.replan)
+        print(f"scenario={scenario.name} robust over {args.seeds} seeds "
+              f"({scenario.seed}..{scenario.seed + args.seeds - 1})  metric={metric}\n")
+        header = f"{'rank':<5}{'strategy':<10}{'mean':<8}{'std':<8}{'min':<8}{'max':<8}{'win-rate':<9}"
+        print(header + "\n" + "-" * len(header))
+        for i, r in enumerate(robust, start=1):
+            print(f"{i:<5}{r.strategy:<10}{r.mean*100:<7.1f} {r.std*100:<7.1f} "
+                  f"{r.lo*100:<7.1f} {r.hi*100:<7.1f} {r.win_rate*100:<8.0f}%")
+        print(f"\nbest on average: {robust[0].strategy}")
+        return 0
     results = compare_strategies(scenario, args.strategies, replan=args.replan)
     print(f"scenario={scenario.name} seed={scenario.seed} "
           f"agents={scenario.n_agents} tasks={scenario.n_tasks}"
@@ -114,6 +127,8 @@ def build_parser() -> argparse.ArgumentParser:
     cmp = sub.add_parser("compare", help="compare all strategies on one scenario")
     add_common(cmp)
     cmp.add_argument("--strategies", nargs="+", default=None, choices=list(STRATEGIES))
+    cmp.add_argument("--seeds", type=int, default=1,
+                     help="run over N seeds and report mean/std/win-rate (robustness)")
     cmp.set_defaults(func=_cmd_compare)
 
     pre = sub.add_parser("presets", help="list presets and strategies")
